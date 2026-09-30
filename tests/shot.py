@@ -1,0 +1,35 @@
+"""快速截图：py -3.11 tests/shot.py  → tests/shots/v_*.png"""
+import os
+from playwright.sync_api import sync_playwright
+URL = os.environ.get('MOWER_URL', 'http://127.0.0.1:8322/index.html')
+SHOTS = os.path.join(os.path.dirname(__file__), 'shots'); os.makedirs(SHOTS, exist_ok=True)
+with sync_playwright() as p:
+    b = p.chromium.launch(args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'])
+    page = b.new_page(viewport={'width': 1280, 'height': 720})
+    errs = []; page.on('pageerror', lambda e: errs.append(str(e))); page.on('console', lambda m: m.type == 'error' and errs.append(m.text))
+    page.goto(URL); page.evaluate('() => localStorage.clear()'); page.reload()
+    page.wait_for_function('() => window.__mower && window.__mower.field', timeout=60000); page.wait_for_timeout(1500)
+    def tp(x, z, yaw=0, wait=1500):
+        page.evaluate(f'() => {{ const c = window.__mower.car; c.x = {x}; c.z = {z}; c.yaw = {yaw}; c.speed = 0; }}'); page.wait_for_timeout(wait)
+    def hold(key, sec):
+        t0 = page.evaluate('() => window.__mower.time'); page.keyboard.down(key)
+        while page.evaluate('() => window.__mower.time') - t0 < sec: page.wait_for_timeout(50)
+        page.keyboard.up(key)
+    page.evaluate('() => { window.__mower.save.hintDone = true; document.getElementById("hint").hidden = true; }')
+    page.screenshot(path=f'{SHOTS}/v_start.png')
+    tp(0, -8); hold('KeyW', 2.5); hold('KeyA', 1.2); hold('KeyW', 1.5); page.wait_for_timeout(800)
+    page.screenshot(path=f'{SHOTS}/v_mow.png')
+    tp(0, -30, 0); page.screenshot(path=f'{SHOTS}/v_field_far.png')
+    tp(-11, 12, 1.57); hold('KeyA', 2.5); page.wait_for_timeout(600); page.screenshot(path=f'{SHOTS}/v_water.png')
+    tp(-8, 13, 0); page.screenshot(path=f'{SHOTS}/v_baler.png')
+    tp(0, 14, 0); page.screenshot(path=f'{SHOTS}/v_gate.png')
+    page.evaluate('() => { const s = window.__mower.save; s.farm.coop.built = true; s.farm.barn.built = true; s.farm.bales = 10; s.farm.shelf.egg = 6; s.farm.shelf.milk = 3; window.__mower.farm.dirty = true; }')
+    page.wait_for_timeout(500)
+    page.evaluate('() => { const c = window.__mower.car; c.x = 0; c.z = 16.6; }'); page.wait_for_timeout(800)
+    page.screenshot(path=f'{SHOTS}/v_dismount.png')
+    print('mode', page.evaluate('() => window.__mower.mode'))
+    page.evaluate('() => { const m = window.__mower.farm.man; m.x = -8; m.z = 26; }'); page.wait_for_timeout(1000); page.screenshot(path=f'{SHOTS}/v_shed.png')
+    page.evaluate('() => { const m = window.__mower.farm.man; m.x = -9.5; m.z = 37; }'); page.wait_for_timeout(1000); page.screenshot(path=f'{SHOTS}/v_coop.png')
+    page.evaluate('() => { const m = window.__mower.farm.man; m.x = 0; m.z = 31; }'); page.wait_for_timeout(4000); page.screenshot(path=f'{SHOTS}/v_shelf.png')
+    print('errors:', errs)
+    b.close()

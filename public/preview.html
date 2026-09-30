@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>模型预览</title>
+<style>body{margin:0;background:#dfeaf2}canvas{display:block}#labels{position:fixed;left:0;top:0;pointer-events:none}#labels div{position:absolute;font:14px sans-serif;background:rgba(255,255,255,.8);padding:2px 6px;border-radius:4px;transform:translate(-50%,0)}</style>
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/" } }</script>
+</head><body><canvas id="gl"></canvas><div id="labels"></div>
+<script type="module">
+// 用法：preview.html?f=models/a.glb,models/b.glb 或 ?dir=tmp 列表由 window.LIST 提供
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+const q = new URLSearchParams(location.search);
+const files = (q.get('f') || '').split(',').filter(Boolean);
+const cols = +(q.get('cols') || 6), cell = 3.2;
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gl'), antialias: true });
+renderer.setSize(innerWidth, innerHeight); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.shadowMap.enabled = true;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xdfeaf2);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x888866, 1.2));
+const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(5, 10, 6); sun.castShadow = true; scene.add(sun);
+const rows = Math.ceil(files.length / cols);
+const W = cols * cell, H = rows * cell;
+const camera = new THREE.OrthographicCamera(-W / 2, W / 2, H / 2, -H / 2, 0.1, 100);
+camera.position.set(0, 20, 14); camera.lookAt(0, 0, 0);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(W + 4, H + 4), new THREE.MeshStandardMaterial({ color: 0xcfd8dc })); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const loader = new GLTFLoader(); const labels = document.getElementById('labels'); const items = [];
+window.__ready = 0;
+files.forEach((f, i) => {
+  loader.load(f, (g) => {
+    const o = g.scene; const box = new THREE.Box3().setFromObject(o); const size = box.getSize(new THREE.Vector3()); const s = 2.4 / Math.max(size.x, size.y, size.z, 0.001);
+    o.scale.setScalar(s); box.setFromObject(o); const c = box.getCenter(new THREE.Vector3());
+    const x = (i % cols - (cols - 1) / 2) * cell, z = (Math.floor(i / cols) - (rows - 1) / 2) * cell;
+    o.position.set(x - c.x, -box.min.y, z - c.z); o.traverse((m) => { if (m.isMesh) { m.castShadow = true; } });
+    scene.add(o); items.push({ f, x, z, anims: g.animations.map((a) => a.name), size: size.toArray().map((v) => +v.toFixed(2)) });
+    const d = document.createElement('div'); d.textContent = f.split('/').pop().replace('.glb', '') + (g.animations.length ? ` 🎬${g.animations.length}` : ''); labels.appendChild(d);
+    const v = new THREE.Vector3(x, 0, z + cell * 0.45).project(camera); d.style.left = (v.x * .5 + .5) * innerWidth + 'px'; d.style.top = (-v.y * .5 + .5) * innerHeight + 'px';
+    window.__ready++; window.__items = items;
+  }, undefined, () => { window.__ready++; });
+});
+(function loop() { renderer.render(scene, camera); requestAnimationFrame(loop); })();
+</script></body></html>

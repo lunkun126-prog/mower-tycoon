@@ -5,8 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#2aa7ef">
 <title>割草大亨</title>
+<link rel="stylesheet" href="fonts/zcool.css">
 <link rel="stylesheet" href="style.css">
-<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+<script>/* 休息锁（D:\claude\rest-lock）正在拦人就跳过去；服务没起就忽略 */fetch("http://127.0.0.1:8330/api/status",{cache:"no-store"}).then(r=>r.json()).then(s=>{if(s.locked)location.replace("http://127.0.0.1:8330/")}).catch(()=>{});</script>
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/" } }</script>
 </head>
 <body>
 <canvas id="gl"></canvas>
@@ -19,7 +21,7 @@
       <div class="cnt"><i class="coin-ico big">$</i><b id="coins">0</b></div>
     </div>
     <div class="prog">
-      <span id="lvlName">第 1 关</span>
+      <span class="lvl"><b id="lvlName">第 1 关</b><small id="lvlCrops"></small></span>
       <div class="pwrap"><div id="progBar" class="pbar"><i id="progFill"></i></div><div id="progRewards" class="prewards"></div></div>
     </div>
     <div id="boost" class="boost" hidden>⚡ 助推中 <b id="boostT">5:00</b></div>
@@ -29,12 +31,13 @@
     <div class="capbar"><i id="capFill"></i><span id="capText">0 / 360</span></div>
   </div>
   <div id="hint" class="hint" hidden>按住屏幕滑动<br>操控割草机</div>
+  <div class="bottom-stack"><div id="energy" class="energy" hidden><i></i><b>体力 100</b></div><div id="task" class="task" hidden></div></div>
   <div id="toast" class="toast"></div>
   <div id="joy" class="joy" hidden><i></i></div>
 </div>
 
 <div id="modal" class="modal" hidden></div>
-<div id="loading" class="loading"><h1>割草大亨</h1><p>正在准备草场…</p></div>
+<div id="loading" class="loading"><h1>割草大亨</h1><p id="loadMsg">正在准备草场…</p><div class="loadbar"><i id="loadBar"></i></div></div>
 
 <script type="module" src="js/main.js"></script>
 </body>
