@@ -168,3 +168,13 @@ b, .hint, .ptitle, .ftitle, .uname, .toast, .popup h2, .floater, .ubuy, .ptabs b
 .cnt b.inf { font-size: 26px; line-height: 1; }
 .ubuy.free { background: linear-gradient(#7ee0ff, #2ea8e6); border-color: #e6f8ff; box-shadow: 0 4px 0 #1b6e9c; }
 .badge-sandbox { padding: 4px 12px; border-radius: 12px; background: rgba(255, 210, 58, .9); color: #4a3200; font-weight: 900; font-size: 14px; }
+
+/* 谁下车 */
+.whos { display: flex; gap: 14px; justify-content: center; margin: 6px 0 16px; flex-wrap: wrap; }
+.who { width: 112px; padding: 10px 6px 8px; border-radius: 16px; border: 3px solid #e6e6e6; background: #fff; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px; font-family: inherit; box-shadow: 0 4px 0 #c9c9c9; }
+.who img { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; border: 3px solid #f2c230; }
+.who b { font-size: 18px; color: #2b3a46; }
+.who i { font-style: normal; font-size: 14px; height: 18px; color: #1f6e1f; font-weight: 900; }
+.who.on { border-color: #36a836; background: #eaffea; box-shadow: 0 4px 0 #1f6e1f; }
+.btn.green { background: linear-gradient(#6fdc6f, #36a836); border-color: #c8ffc8; color: #fff; }
+.btn:disabled { opacity: .45; cursor: default; }

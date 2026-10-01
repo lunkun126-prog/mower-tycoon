@@ -16,6 +16,9 @@ export const FARM_Z = 19;                                     // z 大于这个�
 export const GATE = { x0: -2.6, x1: 2.6 };                    // 农场大门（石墙缺口）
 export const SLIP = { x0: -16, x1: -13, z0: 9.5, z1: 14 };    // 滑水道：从基地左边开进水里（x 越小越深）
 export const SEA_R = 70;                                      // 水里能开多远
+// 小火车站（第 11 关起出现）：基地右边接出去的站台，上面一圈环形小铁轨
+export const STATION = { x0: 16, x1: 31.5, z0: -1.2, z1: 11, gz0: 1.2, gz1: 9.2, fromLevel: 11 };
+export const TRAIN = { cap: 900, speed: 4.2, bonus: 1.25, leaveAfter: 2.5, wagons: 3 };   // 车厢总容量、车速、卖价加成、车离开装车格几秒后发车
 
 // 作物：model = 'blade'（叶片）| 'bush'（花生丛）| 'sunflower' | glb 键；hp 硬度；value 每单位售价；block 车斗方块色
 export const CROPS = [
@@ -48,8 +51,14 @@ export function levelDef(n) {
   // 每关从池里取 2~3 种，顺序跟关号走
   const k = Math.min(pool.length, 2 + (n % 2)), tiers = [];
   for (let i = 0; i < k; i++) tiers.push(pool[(n + i) % pool.length]);
-  return { n, w, d, tiers, seed: 1000 + n * 7919 };
+  return { n, w, d, tiers, seed: 1000 + n * 7919, hard: hardness(n), drag: dragOf(n) };
 }
+// 难度：作物硬度倍数。1~10 关稍微硬一点；11 关起非常硬（锯子要磨好几下才断，但一定割得动）
+export function hardness(n) { return n <= 10 ? 1.8 + 0.15 * (n - 1) : 6 + 0.3 * (n - 11); }
+// 草里开车的阻力（速度乘数）：11 关起草又密又硬，开不快
+export function dragOf(n) { return n <= 10 ? 0.97 - 0.025 * n : Math.max(0.35, 0.48 - 0.005 * (n - 11)); }
+// 升级锯片对硬草的效果递减（否则沙盒里一升满级又变成一碰就断）
+export const cutPower = (strength) => 3 * Math.sqrt(strength / 3);
 
 export const STARS = [
   { at: 0.60, icon: 'flag', reward: (n) => ({ coins: 60 * n }) },
@@ -113,7 +122,15 @@ export const FARM = {
   barn: { name: '牛舍', build: 5000, good: 'milk', every: 9, maxFeed: 12, maxGoods: 20, animals: 2 },
 };
 export const GOODS = { egg: { name: '鸡蛋', price: 12, color: 0xfff4d6, energy: 15 }, milk: { name: '牛奶', price: 35, color: 0xf8f8f8, energy: 25 }, fish: { name: '烤鱼', price: 20, color: 0xd9a066, energy: 40 } };
-export const CHARACTERS = { driver: { name: '一介草民（爷爷）', avatar: 'avatars/caomin.png' }, passenger: { name: '甜甜', avatar: 'avatars/tiantian.png' }, granny: { name: '岁月静好（奶奶）', avatar: 'avatars/nainai.png' } };
+// 一家三口：一介草民是男的，甜甜（小女孩）和岁月静好（奶奶）是女的。model/anim = 下车走路用的模型与动画名
+export const CHARACTERS = {
+  driver:    { name: '一介草民（爷爷）', short: '一介草民', avatar: 'avatars/caomin.png', model: 'farmer1', h: 1.75, anim: { idle: 'Idle', walk: 'Walk', run: 'Run' } },
+  passenger: { name: '甜甜', short: '甜甜', avatar: 'avatars/tiantian.png', model: 'girl1', h: 1.2, anim: { idle: 'Idle', walk: 'Walking', run: 'Running' } },
+  granny:    { name: '岁月静好（奶奶）', short: '岁月静好', avatar: 'avatars/nainai.png', model: 'woman1', h: 1.65, anim: { idle: 'Female_Idle', walk: 'Female_Walk', run: 'Female_Run' } },
+};
+// 每过一关换一种好看的车色（车身原本的红色部分换成这个颜色）
+export const CAR_COLORS = [0xe53935, 0x2e9e4f, 0x1e88e5, 0xff8f00, 0x8e44ad, 0x00a6a6, 0xf4c20d, 0xe8559a, 0x3949ab, 0x7cb342, 0x29b6f6, 0x455a64];
+export const carColor = (n) => CAR_COLORS[(n - 1) % CAR_COLORS.length];
 export const TRUNK = { max: 16, junkRecycle: 1 };   // 后备箱最多装几样（鱼+垃圾）；垃圾扔桶里回收给几个金币
 // 水里的鱼（glTF）：price 0 的只看不捞（海豚/鲸）；rotY 把模型转成朝 -z；zone near=岛两侧、far=外海；depth=水面下多深
 export const FISH = [

@@ -1,6 +1,6 @@
 // 界面：HUD、升级/关卡/商店/农场/设置面板、提示
 import * as THREE from 'three';
-import { UPGRADES, SHOP, FARM, GOODS, STARS, LEVEL_COUNT, SANDBOX } from './config.js';
+import { UPGRADES, SHOP, FARM, GOODS, STARS, LEVEL_COUNT, SANDBOX, CHARACTERS } from './config.js';
 
 const $ = (id) => document.getElementById(id);
 const ICON = {
@@ -173,6 +173,20 @@ export function openBuild(c, name) {
     <span>吃草捆，每 ${F.every} 秒产 1 个${GOODS[F.good].name}（1 捆草够产 5 个）<br>${GOODS[F.good].name}放到「货架」上，顾客会从码头来买（${GOODS[F.good].price} 金币/个）</span>
     <button class="ubuy ${SANDBOX ? 'free' : c.save.coins >= F.build ? 'ok' : ''}" id="bBuild">${SANDBOX ? '建造' : `金币 ${fmt(F.build)}`}</button></div></div>`, 'small');
   p.querySelector('#bBuild').onclick = () => { if (c.build(name)) closeModal(); };
+}
+
+// ---------- 农场大门：谁下车 ----------
+// 点头像选人（可以选好几个），第一个点的是你操控的人，其余的跟在后面走
+export function openWhoDown(c) {
+  const keys = Object.keys(CHARACTERS), pick = [];
+  const cards = keys.map((k) => `<button class="who" data-k="${k}"><img src="${CHARACTERS[k].avatar}" alt=""><b>${CHARACTERS[k].short}</b><i></i></button>`).join('');
+  const p = openModal(`<div class="ptitle">谁下车？</div><div class="pbody"><p class="ctext">点头像选人，可以选好几个；第一个点的人由你操控，其他人跟在后面走。</p>
+    <div class="whos">${cards}</div><div class="cbtns"><button class="btn gold" id="wGo" disabled>下车</button><button class="btn green" id="wAll">全家都下</button></div></div>`, 'small');
+  const go = p.querySelector('#wGo');
+  const paint = () => { p.querySelectorAll('.who').forEach((b) => { const i = pick.indexOf(b.dataset.k); b.classList.toggle('on', i >= 0); b.querySelector('i').textContent = i === 0 ? '我来走' : i > 0 ? '跟着' : ''; }); go.disabled = !pick.length; };
+  p.querySelectorAll('.who').forEach((b) => b.onclick = () => { const i = pick.indexOf(b.dataset.k); if (i >= 0) pick.splice(i, 1); else pick.push(b.dataset.k); paint(); });
+  go.onclick = () => { if (!pick.length) return; const k = pick.slice(); closeModal(); c.getOff(k); };
+  p.querySelector('#wAll').onclick = () => { closeModal(); c.getOff(pick.length ? [...pick, ...keys.filter((k) => !pick.includes(k))] : keys); };
 }
 
 // ---------- 灶台：吃东西 ----------

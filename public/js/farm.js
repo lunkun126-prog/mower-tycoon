@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { FARM, GOODS, BALE, CUSTOMER, FARM_Z, GATE, ISLAND, CHARACTERS, ENERGY } from './config.js';
 import { person, squareBale } from './models.js';
-import { box, sphere, cyl, lam, nameplate } from './assets.js';
+import { box, sphere, cyl, lam, nameplate, GLB } from './assets.js';
 
 const inRect = (r, x, z, m = 0) => x > r.x0 - m && x < r.x1 + m && z > r.z0 - m && z < r.z1 + m;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -12,22 +12,38 @@ export class Farm {
   constructor({ scene, world, save, stats, ui, sfx, fly }) {
     this.scene = scene; this.world = world; this.save = save; this.stats = stats; this.ui = ui; this.sfx = sfx; this.fly = fly;
     this.man = { x: 0, z: 20.5, yaw: Math.PI, speed: 0, pad: null };
-    this.model = person() || Object.assign(new THREE.Group(), { userData: { mix: { play() {}, update() {} }, size: new THREE.Vector3(0.6, 1.75, 0.6) } });
-    this.model.visible = false; scene.add(this.model);
-    this.mix = this.model.userData.mix; this.mix.play('Idle');
-    this.plate = nameplate(CHARACTERS.driver.name, CHARACTERS.driver.avatar, 3.8); this.plate.position.set(0, 2.45, 0); this.model.add(this.plate);
-    // 头顶草捆 / 手里篮子
-    this.carryG = new THREE.Group(); this.model.add(this.carryG);
+    // 一家三口都能下车：每人一个走路模型（一介草民=男农夫，甜甜=小女孩，岁月静好=奶奶），想让谁下就谁下
+    this.walkers = {};
+    for (const key of Object.keys(CHARACTERS)) {
+      const C = CHARACTERS[key];
+      const m = GLB.make(C.model, { height: C.h, rotY: Math.PI }) || Object.assign(new THREE.Group(), { userData: { size: new THREE.Vector3(0.6, C.h, 0.6) } });
+      const mix = m.userData.anims ? GLB.mixer(m) : { play() {}, update() {} };
+      m.visible = false; scene.add(m); mix.play(C.anim.idle);
+      const plate = nameplate(C.name, C.avatar, 3.8 * Math.max(0.75, C.h / 1.75)); plate.position.set(0, C.h + 0.7, 0); m.add(plate);
+      this.walkers[key] = { key, C, model: m, mix, x: 0, z: 20.5, yaw: 0 };
+    }
+    this.party = ['driver']; this.trail = [];
+    // 头顶草捆 / 手里篮子（挂在领头的人身上）
+    this.carryG = new THREE.Group();
     this.baleMeshes = [];
-    for (let i = 0; i < 14; i++) { const b = squareBale(); b.scale.setScalar(0.62); b.position.set(0, 1.85 + i * 0.29, 0); b.visible = false; this.carryG.add(b); this.baleMeshes.push(b); }
-    this.basket = new THREE.Group(); this.basket.position.set(0.42, 0.75, 0.15); this.basket.visible = false; this.model.add(this.basket);
+    for (let i = 0; i < 14; i++) { const b = squareBale(); b.scale.setScalar(0.62); b.position.set(0, i * 0.29, 0); b.visible = false; this.carryG.add(b); this.baleMeshes.push(b); }
+    this.basket = new THREE.Group(); this.basket.visible = false;
     cyl(0.22, 0.16, 0.22, lam(0xc58b4a), 0, 0, 0, this.basket, 10);
     const handle = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.02, 6, 14, Math.PI), lam(0x8a5a2a)); handle.position.y = 0.1; this.basket.add(handle);
     this.basketEggs = []; this.basketMilk = [];
     for (let i = 0; i < 6; i++) { const e = sphere(0.06, lam(0xfff4d6), Math.cos(i) * 0.1, 0.1, Math.sin(i) * 0.1, this.basket, 6); e.visible = false; this.basketEggs.push(e); }
     for (let i = 0; i < 4; i++) { const m = cyl(0.04, 0.045, 0.2, lam(0xf8f8f8), -0.08 + (i % 2) * 0.16, 0.18, -0.06 + Math.floor(i / 2) * 0.12, this.basket, 6); m.visible = false; this.basketMilk.push(m); }
     this.customers = []; this.custTimer = 4; this.balerBusy = 0;
+    this.attachCarry('driver');
     this.sync();
+  }
+  get lead() { return this.walkers[this.party[0]]; }
+  get model() { return this.lead.model; }
+  get mix() { return this.lead.mix; }
+  attachCarry(key) {
+    const w = this.walkers[key], h = w.C.h;
+    w.model.add(this.carryG); this.carryG.position.set(0, h + 0.1, 0);
+    w.model.add(this.basket); this.basket.position.set(0.24 * h, 0.43 * h, 0.08 * h);
   }
 
   get f() { return this.save.farm; }
@@ -92,13 +108,18 @@ export class Farm {
   }
 
   // ---- 人物模式 ----
-  dismount(x, z, rawFish = 0) {
+  // keys：下车的人（第一个是你操控的，其余跟在后面走）
+  dismount(keys, x, z, rawFish = 0) {
+    this.hide();
+    this.party = keys.filter((k) => this.walkers[k]); if (!this.party.length) this.party = ['driver'];
     this.man.x = x; this.man.z = z; this.man.yaw = 0; this.man.speed = 0; this.man.pad = 'gate';
-    this.model.visible = true; this.model.position.set(x, 0, z); this.model.rotation.y = 0; this.mix.play('Idle');
+    this.trail = [];
+    this.party.forEach((k, i) => { const w = this.walkers[k]; w.x = x + (i % 2 ? 0.9 : -0.9) * Math.ceil(i / 2); w.z = z - 0.4 * i; w.yaw = 0; w.model.visible = true; w.model.position.set(w.x, 0, w.z); w.model.rotation.y = 0; w.mix.play(w.C.anim.idle); });
+    this.attachCarry(this.party[0]);
     if (rawFish > 0) { this.f.carry.rawFish += rawFish; this.dirty = true; }
     this.ui.toast(rawFish > 0 ? `下车了！提着 ${rawFish} 条鱼，去「灶台」烤了吃或上架卖` : this.f.bales > 0 ? '下车了！去「草棚」扛草捆，喂鸡喂牛' : '下车了！先去「打捆」格把车上的草打成草捆');
   }
-  hide() { this.model.visible = false; }
+  hide() { for (const k in this.walkers) this.walkers[k].model.visible = false; }
 
   walkable(x, z) {
     const m = 0.6;
@@ -130,9 +151,20 @@ export class Farm {
     else if (this.walkable(nx, man.z)) man.x = nx;
     else if (this.walkable(man.x, nz)) man.z = nz;
     else man.speed = 0;
+    const A = this.lead.C.anim;
     this.model.position.set(man.x, 0, man.z); this.model.rotation.y = man.yaw;
-    this.mix.play(man.speed > 2.6 ? 'Run' : man.speed > 0.3 ? 'Walk' : 'Idle', 0.2, man.speed > 2.6 ? 1.1 : 1);
+    this.mix.play(man.speed > 2.6 ? A.run : man.speed > 0.3 ? A.walk : A.idle, 0.2, man.speed > 2.6 ? 1.1 : 1);
     this.mix.update(dt);
+    // 其他下车的人沿着你走过的路跟在后面
+    const last = this.trail[this.trail.length - 1];
+    if (!last || Math.hypot(man.x - last.x, man.z - last.z) > 0.2) { this.trail.push({ x: man.x, z: man.z }); if (this.trail.length > 40) this.trail.shift(); }
+    for (let i = 1; i < this.party.length; i++) {
+      const w = this.walkers[this.party[i]], t = this.trail[Math.max(0, this.trail.length - 1 - i * 6)];
+      let mv = 0;
+      if (t) { const dx = t.x - w.x, dz = t.z - w.z, d = Math.hypot(dx, dz); if (d > 0.05) { const st = Math.min(d, (S.walk * 1.15) * dt); w.x += dx / d * st; w.z += dz / d * st; w.yaw = Math.atan2(-dx, -dz); mv = st / dt; } }
+      w.model.position.set(w.x, 0, w.z); w.model.rotation.y = w.yaw;
+      w.mix.play(mv > 2.6 ? w.C.anim.run : mv > 0.3 ? w.C.anim.walk : w.C.anim.idle, 0.2); w.mix.update(dt);
+    }
     // 格子
     let pad = null;
     for (const name of ['shed', 'coop', 'barn', 'shelf', 'cook', 'gate']) if (inRect(this.world.pads[name], man.x, man.z)) { pad = name; break; }

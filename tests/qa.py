@@ -56,6 +56,7 @@ with sync_playwright() as p:
     page.on('pageerror', lambda e: errors.append(str(e)))
     page.on('console', lambda m: m.type == 'error' and ':8330/' not in (m.location or {}).get('url', '') + m.text and errors.append(m.text))   # 8330=休息锁探测，服务没起时的连接失败不算
     page.on('response', lambda r: r.status >= 400 and errors.append(f'{r.status} {r.url}'))
+    page.route('http://127.0.0.1:8330/**', lambda r: r.abort())   # 只在测试浏览器里不理休息锁（休息时段会把游戏页跳走），不影响孩子那边的锁
     page.goto(URL)
     page.evaluate('() => localStorage.clear()'); page.reload()
     page.wait_for_function('() => window.__mower && window.__mower.field', timeout=60000)
@@ -66,7 +67,7 @@ with sync_playwright() as p:
     sandbox = ev(page, '() => !!window.__mower.sandbox')
     fw, fd = ev(page, '() => [window.__mower.field.def.w, window.__mower.field.def.d]')
     check('第 1 关草场 40×44 米（比 v2 大）', fw >= 40 and fd >= 44, f'{fw}x{fd}')
-    check('锯子锋利：切割力 ≥ 所有作物硬度', ev(page, '() => window.__mower.stats.strength') >= 2.5)
+    check('前 10 关锯子够锋利：第 1 关切割力 ≥ 作物硬度', ev(page, '() => window.__mower.stats.strength >= 1.0 * window.__mower.field.def.hard'))
 
     # 开上草场割草
     hold(page, 'KeyW', 3.2)
@@ -211,6 +212,8 @@ with sync_playwright() as p:
     ev(page, '() => { window.__mower.save.trunk.fish = ["carp", "carp"]; }')
     tp(page, 0, 12); tp(page, 0, 16.6)
     page.wait_for_timeout(500)
+    check('大门弹出「谁下车」三个人可选', page.locator('#modal .who').count() == 3)
+    page.click('#modal .who[data-k=driver]'); page.click('#wGo'); wait_sim(page, 0.3)
     check('开进农场大门 → 下车变成人', ev(page, '() => window.__mower.mode') == 'walk')
     check('人物模型显示且站着（高约 1.75m）', ev(page, '() => { const m = window.__mower.farm.model; return m.visible && Math.abs(m.userData.size.y - 1.75) < 0.05; }'))
     check('下车时后备箱的鱼提在手里', ev(page, '() => window.__mower.save.farm.carry.rawFish') == 2 or ev(page, '() => window.__mower.save.farm.carry.rawFish') >= 1)
@@ -248,7 +251,8 @@ with sync_playwright() as p:
         page.wait_for_timeout(100)
         if ev(page, '() => window.__mower.save.coins') > c0 or ev(page, '() => window.__mower.time') - t0 > 40: break
     c1 = ev(page, '() => window.__mower.save.coins')
-    check('顾客从码头来买走鸡蛋、付 12 金币', c1 - c0 == 12 and ev(page, '() => window.__mower.save.farm.shelf.egg') == 9, f'+{c1 - c0}')
+    sold = ev(page, '() => { const s = window.__mower.save.farm.shelf; return [s.egg, s.fish]; }')
+    check('顾客从码头来买走一件货、付钱（鸡蛋 12 / 烤鱼 20，随机挑）', (c1 - c0 == 12 and sold[0] == 9) or (c1 - c0 == 20 and sold[0] == 10), f'+{c1 - c0}')
     page.screenshot(path=f'{SHOTS}/16_customer.png')
     # 走回大门上车
     man_tp(page, 0, 19.3)

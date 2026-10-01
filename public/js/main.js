@@ -1,10 +1,11 @@
 // 割草大亨 v3 主逻辑：开车割草装车 → 出售/打捆 → 下水玩 → 农场大门下车变人 → 扛草喂鸡牛 → 收蛋奶上架 → 顾客来买；升级/星星关卡/商店/存档/粒子/音效
 import * as THREE from 'three';
-import { CROPS, UPGRADES, SHOP, FARM, GOODS, STARS, LEVEL_COUNT, UNLOCK, BOOST_MS, FIELD_Y, RAMP, ISLAND, FARM_Z, GATE, SLIP, SEA_R, WATER_Y, UNITS_PER_CELL, FIELD_BONUS, SANDBOX, TRUNK, ENERGY, FISH_INDEX, levelDef, stats } from './config.js';
+import { CROPS, UPGRADES, SHOP, FARM, GOODS, STARS, LEVEL_COUNT, UNLOCK, BOOST_MS, FIELD_Y, RAMP, ISLAND, FARM_Z, GATE, SLIP, SEA_R, WATER_Y, UNITS_PER_CELL, FIELD_BONUS, SANDBOX, TRUNK, ENERGY, FISH_INDEX, levelDef, stats, cutPower, carColor, STATION, CHARACTERS } from './config.js';
 import { World } from './world.js';
 import { Field } from './grass.js';
 import { Mower } from './models.js';
 import { Farm } from './farm.js';
+import { Train } from './train.js';
 import { textPlane, GLB } from './assets.js';
 import * as UI from './ui.js';
 
@@ -19,7 +20,7 @@ function defaultSave() {
     shop: {}, boostUntil: 0,
     farm: { coop: { built: false, feed: 0, goods: 0, t: 0 }, barn: { built: false, feed: 0, goods: 0, t: 0 }, bales: 0, balerBuf: 0, shelf: { egg: 0, milk: 0, fish: 0 }, carry: { bales: 0, egg: 0, milk: 0, fish: 0, rawFish: 0 }, energy: ENERGY.max },
     trunk: { fish: [], junk: 0 },
-    runs: [], fieldCut: null, hintDone: false, sound: true, mode: 'drive',
+    runs: [], fieldCut: null, hintDone: false, sound: true, mode: 'drive', party: ['driver'],
   };
 }
 const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -49,6 +50,7 @@ function loadSave() {
     o.runs = Array.isArray(s.runs) ? s.runs.filter((r) => r && Number.isInteger(r.t) && r.t >= 0 && r.t < CROPS.length && num(r.u) > 0).map((r) => ({ t: r.t, u: r.u })) : [];
     o.fieldCut = s.fieldCut && typeof s.fieldCut.data === 'string' && Number.isInteger(s.fieldCut.level) ? s.fieldCut : null;
     o.mode = s.mode === 'walk' ? 'walk' : 'drive';
+    o.party = Array.isArray(s.party) ? s.party.filter((k) => k in CHARACTERS) : ['driver']; if (!o.party.length) o.party = ['driver'];
     o.boostUntil = num(s.boostUntil);
     return o;
   } catch { return d; }
@@ -95,7 +97,7 @@ function resize() {
 addEventListener('resize', resize); resize();
 
 const uniforms = { uTime: { value: 0 }, uMower: { value: new THREE.Vector3(0, 0, 0) } };
-let world = null, field = null, mower = null, farm = null;
+let world = null, field = null, mower = null, farm = null, train = null;
 let mode = 'drive';   // drive | walk
 
 // ---------------- 小工具 ----------------
@@ -107,6 +109,7 @@ function groundY(x, z) {
   if (z < RAMP.z0) return inField(x, z, field.margin) ? FIELD_Y : WATER_Y - 0.15;
   if (z <= RAMP.z1 && x > RAMP.x0 - 0.5 && x < RAMP.x1 + 0.5) return FIELD_Y * (RAMP.z1 - z) / (RAMP.z1 - RAMP.z0);
   if (inRect(ISLAND, x, z)) { if (inSlip(x, z)) return -0.75 * clamp((SLIP.x1 - x) / 3.6, 0, 1); return 0; }
+  if (train && train.inArea(x, z)) return 0;
   if (inSlip(x, z)) return -0.75 * clamp((SLIP.x1 - x) / 3.6, 0, 1);
   return WATER_Y - 0.15;
 }
@@ -118,9 +121,11 @@ function walkable(x, z) {
     return waterOk(x, z);
   }
   if (z <= RAMP.z1 + m && x > RAMP.x0 - 0.5 && x < RAMP.x1 + 0.5) return x > RAMP.x0 + 0.7 && x < RAMP.x1 - 0.7 || (z > RAMP.z1 + 0.6);
+  if (train && train.inArea(x, z) && x > ISLAND.x1) return train.walkable(x, z);
   if (inRect(ISLAND, x, z, 0.2)) {
     if (inSlip(x, z)) return true;
-    if (!(x > ISLAND.x0 + m && x < ISLAND.x1 - m && z > 0.6)) return false;
+    const gap = train && train.active && z > STATION.gz0 + 0.6 && z < STATION.gz1 - 0.6;   // 右边栏杆的进站口
+    if (!(x > ISLAND.x0 + m && (x < ISLAND.x1 - m || gap) && z > 0.6)) return false;
     if (z > FARM_Z - 0.8) return false;                     // 石墙：车不进农场（大门格会让你下车）
     for (const b of world.blockers) if (inRect(b, x, z, 0.7)) return false;
     return true;
@@ -130,6 +135,7 @@ function walkable(x, z) {
 function waterOk(x, z) {
   if (inSlip(x, z)) return true;
   if (inRect(ISLAND, x, z, 0.8)) return false;
+  if (train && train.inArea(x, z, 0.8)) return false;
   if (inField(x, z, field.margin + 0.8)) return false;
   if (z > RAMP.z0 - 0.8 && z < RAMP.z1 + 0.8 && x > RAMP.x0 - 1 && x < RAMP.x1 + 1) return false;
   if (Math.abs(x) < 2.2 && z > ISLAND.z1 - 1 && z < ISLAND.z1 + 9.5) return false;   // 码头
@@ -184,6 +190,9 @@ function loadLevel(n, restore) {
   run.full100 = field.progress >= 0.999;
   pickups.length = 0; pickDirty = true;
   UI.setLevel(n, field.def.tiers.map((t) => CROPS[t].name).join(' · '));
+  mower.setColor(carColor(n));   // 每关换一种车色
+  train && train.setActive(n >= STATION.fromLevel);
+  if (!restore && n > 10) UI.toast('这一关的草又硬又密：锯子要多磨几下，开慢点，来回多割几遍');
   saveDirty = true;
 }
 
@@ -315,7 +324,7 @@ let trunkDirty = true, lastFullToast = -9;
 const trunkTotal = () => save.trunk.fish.length + save.trunk.junk;
 let tPrev = performance.now(), elapsed = 0, sellAcc = 0, sellShow = 0, sellTimer = 0, flyAcc = 0, dropAcc = 0, smokeAcc = 0, splashAcc = 0, baleAcc = 0, baleShow = 0;
 const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
-const stackTopWorld = () => mower.body.localToWorld(tmpV2.set(0, mower.stackTop || 1.2, 0.75)).clone();
+const stackTopWorld = () => mower.body.localToWorld(tmpV2.set(0, mower.stackTop || 1.2, mower.bed.position.z)).clone();
 
 function starCheck() {
   const p = field.progress, n = save.level;
@@ -346,24 +355,28 @@ function onEnterPad(name) {
   else if (name === 'shop') lv >= UNLOCK.shop ? UI.openShop(ctx) : UI.openLocked('商店', `${UNLOCK.shop}级后解锁`);
   else if (name === 'sell' && cargoTotal() < 0.5) UI.toast('车上没有草，先去草场割草');
   else if (name === 'baler') { if (lv < UNLOCK.farm) UI.openLocked('草料机', `${UNLOCK.farm}级后解锁`); else if (cargoTotal() < 0.5) UI.toast('车上没有草：割草回来再打捆'); else if (farm.balerFull()) UI.toast('草棚堆满了，先去喂鸡喂牛'); }
-  else if (name === 'gate') { if (lv < UNLOCK.farm) UI.openLocked('农场', `${UNLOCK.farm}级后解锁`); else dismount(); }
+  else if (name === 'gate') { if (lv < UNLOCK.farm) UI.openLocked('农场', `${UNLOCK.farm}级后解锁`); else UI.openWhoDown(ctx); }
+  else if (name === 'train' && train.state !== 'wait') UI.toast('小火车卖草去了，等它开回来再装');
+  else if (name === 'train' && cargoTotal() < 0.5) UI.toast('车上没有草：割满了开过来，草会装进小火车');
   else if (name === 'trash') {
     if (save.trunk.junk > 0) { const n = save.trunk.junk, pay = n * TRUNK.junkRecycle; save.trunk.junk = 0; save.coins += pay; trunkDirty = true; saveDirty = true; UI.toast(`扔了 ${n} 件垃圾${pay ? `，回收 +${pay} 金币` : ''}`); Sfx.blip(300, 0.15, 'square', 0.1); }
     else UI.toast('后备箱里没有垃圾');
   }
 }
-function dismount() {
+// keys：谁下车（第一个是你操控的人，其余跟在后面）
+function dismount(keys = ['driver']) {
   mode = 'walk'; car.speed = 0; car.x = world.pads.gate.cx; car.z = world.pads.gate.cz; car.yaw = Math.PI;
   mower.g.position.set(car.x, 0, car.z); mower.g.rotation.set(0, car.yaw, 0); mower.setWater(false); arrows.visible = false;
-  mower.driver && (mower.driver.visible = false); mower.driverPlate.visible = false;
+  for (const k of keys) mower.setSeated(k, false);
   const rawFish = save.trunk.fish.length; save.trunk.fish = []; trunkDirty = true;
-  farm.dismount(0, FARM_Z + 1.6, rawFish); saveDirty = true;
+  save.party = keys.slice();
+  farm.dismount(keys, 0, FARM_Z + 1.6, rawFish); saveDirty = true;
 }
 function mount() {
   mode = 'drive'; farm.hide();
   car.x = world.pads.gate.cx; car.z = world.pads.gate.cz; car.yaw = 0; car.speed = 0; car.pad = 'gate';
-  mower.driver && (mower.driver.visible = true); mower.driverPlate.visible = true;
-  UI.toast('上车了'); saveDirty = true;
+  for (const k in CHARACTERS) mower.setSeated(k, true);
+  UI.toast('都上车了'); saveDirty = true;
 }
 
 const ctx = {
@@ -397,6 +410,7 @@ const ctx = {
   resetSave() { resetting = true; localStorage.removeItem(SAVE_KEY); location.reload(); },
   toggleSound() { save.sound = !save.sound; saveDirty = true; if (save.sound) Sfx.unlock(); else Sfx.suspend(true); return save.sound; },
   eat(kind) { return farm.eat(kind); },
+  getOff(keys) { if (mode === 'drive' && car.pad === 'gate') dismount(keys); },
 };
 
 // ---------------- 主循环 ----------------
@@ -411,15 +425,18 @@ function stepDrive(dt, inp) {
     target = S.speed * inp.mag * (Math.abs(d) > 1.6 ? 0.35 : 1) * (wet ? 0.55 : 1);
     if (mower.steer) mower.steer.rotation.z = clamp(d, -1, 1) * 0.8;
   }
-  // 割草：锯子锋利，碰到就断
+  // 割草：前 10 关稍硬，11 关起草又硬又密——锯子要磨几下才断、车在草里开不快（但一定割得动）
   const cutList = [];
   if (car.z < RAMP.z0 + 0.5 && !wet) {
+    const power = cutPower(S.strength);
     for (let k = 0; k < mower.blades.length; k++) {
       mower.bladeWorld(k, tmpV);
-      tough = Math.max(tough, field.cutAt(tmpV.x, tmpV.z, S.bladeR, S.strength, dt, cutList));
+      tough = Math.max(tough, field.cutAt(tmpV.x, tmpV.z, S.bladeR, power, dt, cutList));
     }
   }
-  if (tough > 1) target *= clamp(1 / tough, 0.25, 1);
+  if (cutList.length || tough > 0) target *= field.def.drag;
+  if (tough > 1) target *= clamp(1 / tough, field.def.n > 10 ? 0.2 : 0.3, 1);
+  mower.body.rotation.z = tough > 1 ? (Math.random() - 0.5) * 0.04 * Math.min(tough, 3) : 0;   // 硬草顶得车一颤一颤
   car.speed += (target - car.speed) * Math.min(1, dt * (wet ? 3 : 8));
   const fx = -Math.sin(car.yaw), fz = -Math.cos(car.yaw);
   const nx = car.x + fx * car.speed * dt, nz = car.z + fz * car.speed * dt;
@@ -490,6 +507,16 @@ function stepDrive(dt, inp) {
     if (sellAcc >= 0.5) { save.coins += 1; sellShow += 1; } sellAcc = 0;
     UI.floatText(`+${sellShow}`, world.pads.sell, camera); Sfx.fanfare(); sellShow = 0; car.fullWarned = false;
   }
+  // 装火车格：草一块块飞进车厢，车开走后小火车出发去市场卖（比「出售」多卖 25%）
+  if (pad === 'train' && total > 0 && train.room > 0) {
+    const taken = takeTop(Math.min(Math.max(total / 1.0, 90) * dt, total, train.room));
+    let u = 0, v = 0; for (const s of taken) { u += s.u; v += s.u * CROPS[s.t].value * S.sellMult; }
+    train.load(u, v, taken[0] ? taken[0].t : 0);
+    sellTimer += dt;
+    if (sellTimer > 0.06) { sellTimer = 0; fly(stackTopWorld(), train.slotWorld(new THREE.Vector3()), taken[0] ? taken[0].t : 0, 0.45, 1.8); Sfx.blip(500 + Math.random() * 200, 0.04); }
+    if (train.room <= 0) UI.toast('小火车装满了，出发去市场！');
+    saveDirty = true;
+  }
   // 打捆格：卸草进草料机
   if (pad === 'baler' && total > 0 && featureLevel() >= UNLOCK.farm && !farm.balerFull()) {
     const taken = takeTop(Math.min(Math.max(total / 1.0, 90) * dt, total));
@@ -507,7 +534,7 @@ function stepDrive(dt, inp) {
   const full = cargoTotal() >= S.cap - UNITS_PER_CELL * 0.5;
   if (full && !car.fullWarned) { car.fullWarned = true; UI.toast('装满了！回基地「出售」换钱，或「打捆」喂动物'); Sfx.blip(330, 0.25, 'triangle'); }
   if (!full) car.fullWarned = false;
-  arrows.visible = full && pad !== 'sell' && pad !== 'baler';
+  arrows.visible = full && pad !== 'sell' && pad !== 'baler' && pad !== 'train';
   if (arrows.visible) {
     let tx, tz;
     if (car.z < RAMP.z0 + 0.3) { tx = 0; tz = RAMP.z1 + 1.5; } else { tx = world.pads.sell.cx; tz = world.pads.sell.cz; }
@@ -547,15 +574,19 @@ function stepDrive(dt, inp) {
   mower.body.position.y = car.speed > 0.3 && !wet ? Math.sin(elapsed * 30) * 0.015 : 0;
   uniforms.uMower.value.set(car.x + fx * 0.3, clamp(car.speed / 3, 0.35, 1), car.z + fz * 0.3);
   if (mower.trailer.visible) {
-    const hx = car.x - fx * 2.4, hz = car.z - fz * 2.4, tp = mower.trailerPos;
+    const hx = car.x - fx * mower.hitchZ, hz = car.z - fz * mower.hitchZ, tp = mower.trailerPos;
     if (!mower.trailerInit) { tp.set(hx - fx * 1.5, 0, hz - fz * 1.5); mower.trailerInit = true; }
-    const dx = tp.x - hx, dz = tp.z - hz, dl = Math.hypot(dx, dz) || 1;
-    tp.x = hx + dx / dl * 1.3; tp.z = hz + dz / dl * 1.3;
+    let dx = tp.x - hx, dz = tp.z - hz, dl = Math.hypot(dx, dz) || 1;
+    // 车被传送（换关/上车）就把拖车摆回正后方；急转弯最多折 75°，拖车永远在后备箱后面，不会折到前面压在后备箱上
+    if (dl > 3.5) { dx = -fx; dz = -fz; dl = 1; }
+    for (let k = 0; k < 8 && (dx * -fx + dz * -fz) / dl < 0.26; k++) { dx = dx / dl - fx; dz = dz / dl - fz; dl = Math.hypot(dx, dz); if (dl < 1e-3) { dx = -fx; dz = -fz; dl = 1; } }
+    tp.x = hx + dx / dl * 1.9; tp.z = hz + dz / dl * 1.9;
     mower.trailer.position.set(tp.x, groundY(tp.x, tp.z), tp.z);
     mower.trailer.rotation.set(0, Math.atan2(dx, dz), 0);
   }
   if (cargoDirty) { cargoDirty = false; refreshStack(); }
   if (mower.kidMix) mower.kidMix.update(dt);
+  if (mower.grannyMix) mower.grannyMix.update(dt);
 
   // 水花：下水那一下大溅，开着走持续溅
   if (wet && !car.wet) { splash(car.x + fx * 1.2, car.z + fz * 1.2, 90, 1.6); Sfx.blip(180, 0.4, 'sawtooth', 0.15); UI.toast('拖拉机变成船啦！船头的网撞到鱼就捞进后备箱，从「下水」坡再开上来'); }
@@ -586,6 +617,7 @@ function step(dt) {
   mower.trailer.visible = save.up.trailer > 0 && mode === 'drive';
   const inp = UI.modalOpen() ? null : readInput();
   if (mode === 'drive') stepDrive(dt, inp); else stepWalk(dt, inp);
+  train.update(dt, mode === 'drive' && car.pad === 'train');
   farm.tick(dt);
   if (farm.dirty) { farm.dirty = false; farm.sync(); saveDirty = true; }
 
@@ -658,10 +690,14 @@ async function boot() {
     sfx: Sfx,
     fly: (a, b) => { if (baleFly.length < 12) baleFly.push({ a: a.clone(), b: b.clone(), t: 0 }); },
   });
+  train = new Train(scene, world, {
+    sfx: Sfx,
+    onSold: (pay, units, at) => { save.coins += pay; saveDirty = true; UI.floatAt(`+${pay}`, at.x, at.y, at.z, camera); UI.toast(`小火车在市场卖了 ${Math.round(units)} 份草，+${pay} 金币`); Sfx.fanfare(); },
+  });
   UI.init(ctx);
   loadLevel(clamp(save.level, 1, LEVEL_COUNT), true);
   S = stats(save);
-  if (save.mode === 'walk' && featureLevel() >= UNLOCK.farm) { mode = 'walk'; car.x = world.pads.gate.cx; car.z = world.pads.gate.cz; car.yaw = Math.PI; car.pad = 'gate'; mower.driver && (mower.driver.visible = false); mower.driverPlate.visible = false; farm.dismount(0, FARM_Z + 1.6); }
+  if (save.mode === 'walk' && featureLevel() >= UNLOCK.farm) { mode = 'walk'; car.x = world.pads.gate.cx; car.z = world.pads.gate.cz; car.yaw = Math.PI; car.pad = 'gate'; for (const k of save.party) mower.setSeated(k, false); farm.dismount(save.party, 0, FARM_Z + 1.6); }
   mower.g.position.set(car.x, 0, car.z);
   UI.hint(!save.hintDone);
   if (SANDBOX) { const b = document.createElement('div'); b.className = 'badge-sandbox'; b.textContent = '沙盒 · 全解锁'; document.querySelector('.bottom-stack').appendChild(b); }
@@ -669,6 +705,6 @@ async function boot() {
   addEventListener('pagehide', persist);
   $('loading').remove();
   requestAnimationFrame((t) => { tPrev = t; frame(t); });
-  window.__mower = { save, car, get field() { return field; }, get stats() { return S; }, get time() { return elapsed; }, get mode() { return mode; }, get farm() { return farm; }, get world() { return world; }, get mower() { return mower; }, cargoTotal, setRuns: (r) => { save.runs = r; cargoSum = r.reduce((a, x) => a + x.u, 0); cargoDirty = true; }, ctx, pickups, sandbox: SANDBOX, renderer, groundY, inWater: () => inWater(car.x, car.z), setCam: (p, t) => { camFree = p ? { p: new THREE.Vector3(...p), t: new THREE.Vector3(...t) } : null; } };
+  window.__mower = { save, car, get field() { return field; }, get stats() { return S; }, get time() { return elapsed; }, get mode() { return mode; }, get farm() { return farm; }, get world() { return world; }, get mower() { return mower; }, get train() { return train; }, THREE_V: THREE.Vector3, CROPS, cargoTotal, setRuns: (r) => { save.runs = r; cargoSum = r.reduce((a, x) => a + x.u, 0); cargoDirty = true; }, ctx, pickups, sandbox: SANDBOX, renderer, groundY, inWater: () => inWater(car.x, car.z), setCam: (p, t) => { camFree = p ? { p: new THREE.Vector3(...p), t: new THREE.Vector3(...t) } : null; } };
 }
 boot().catch((e) => { console.error(e); const m = $('loadMsg'); if (m) m.textContent = '加载失败：' + e.message; });

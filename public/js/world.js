@@ -1,6 +1,6 @@
 // 场景：天空、海（锦鲤、船、鸭子、睡莲）、小岛基地、建筑、地面格子、滑水道、农场（石墙大门/草料机/草棚/鸡舍/牛舍/货架/小路码头）、草场四周风景
 import * as THREE from 'three';
-import { FIELD_Y, RAMP, ISLAND, FARM_Z, GATE, SLIP, WATER_Y, FISH } from './config.js';
+import { FIELD_Y, RAMP, ISLAND, FARM_Z, GATE, SLIP, WATER_Y, FISH, STATION } from './config.js';
 import { rng, lam, box, cyl, sphere, TEX, textPlane, canvasTex, GLB, infoSprite } from './assets.js';
 import { tree, bush, hayBale, squareBale, scarecrow, animal, duck, fish, rowboat, hayBarge, sailboat, lilyPad } from './models.js';
 import { makeLawn } from './grass.js';
@@ -85,7 +85,7 @@ export class World {
   // ---------- 小岛：基地石板 + 农场草地 + 岩壁 + 栅栏 + 坡道 + 滑水道 ----------
   buildIsland() {
     const s = this.scene, I = ISLAND;
-    const pav = paverTexture(); pav.repeat.set(3.5, 2.3);
+    const pav = paverTexture(); pav.repeat.set(3.5, 2.3); this.makePaver = paverTexture;
     const base = new THREE.Mesh(new THREE.BoxGeometry(I.x1 - I.x0, 1.2, FARM_Z - I.z0), new THREE.MeshStandardMaterial({ map: pav, roughness: 0.9 }));
     base.position.set(0, -0.6, (I.z0 + FARM_Z) / 2); base.receiveShadow = true; s.add(base);
     const farm = new THREE.Mesh(new THREE.BoxGeometry(I.x1 - I.x0, 1.2, I.z1 - FARM_Z), TEX.mat('grass2', { repeat: 1.1, color: 0xc4e08a }));
@@ -112,7 +112,11 @@ export class World {
       for (const y of [0.5, 0.85]) { const rail = box(len, 0.1, 0.1, wood, (x0 + x1) / 2, y, (z0 + z1) / 2, s); rail.rotation.y = -Math.atan2(z1 - z0, x1 - x0); }
     };
     fence(I.x0, 0.1, RAMP.x0 - 0.6, 0.1); fence(RAMP.x1 + 0.6, 0.1, I.x1, 0.1);
-    fence(I.x0, 0.1, I.x0, SLIP.z0 - 0.4); fence(I.x0, SLIP.z1 + 0.4, I.x0, I.z1); fence(I.x1, 0.1, I.x1, I.z1); fence(I.x0, I.z1, I.x1, I.z1);
+    fence(I.x0, 0.1, I.x0, SLIP.z0 - 0.4); fence(I.x0, SLIP.z1 + 0.4, I.x0, I.z1); fence(I.x1, 0.1, I.x1, STATION.gz0); fence(I.x1, STATION.gz1, I.x1, I.z1); fence(I.x0, I.z1, I.x1, I.z1);
+    // 右边栏杆中间这一段：第 11 关起拆掉，变成去小火车站的进站口
+    this.eastGap = new THREE.Group(); s.add(this.eastGap);
+    for (const y of [0.5, 0.85]) box(0.1, 0.1, STATION.gz1 - STATION.gz0, wood, I.x1, y, (STATION.gz0 + STATION.gz1) / 2, this.eastGap);
+    for (let z = STATION.gz0 + 2; z < STATION.gz1 - 0.5; z += 2) box(0.26, 1.15, 0.26, 0x8a5a2a, I.x1, 0.55, z, this.eastGap);
     const pim = new THREE.InstancedMesh(new THREE.BoxGeometry(0.26, 1.15, 0.26), lam(0x8a5a2a), posts.length);
     posts.forEach(([x, z], i) => { mm.makeTranslation(x, 0.55, z); pim.setMatrixAt(i, mm); });
     pim.castShadow = true; s.add(pim);
@@ -145,7 +149,7 @@ export class World {
     for (let i = 0; i < 2; i++) { const a = textPlane('︿', 0.8, { color: '#8fe0ff', stroke: '#124a66' }); a.rotation.x = -Math.PI / 2; a.rotation.z = Math.PI / 2; a.position.set(SLIP.x0 - 0.2 - i * 1.4, 0.04 - i * 0.28, (SLIP.z0 + SLIP.z1) / 2); s.add(a); }
     // 基地角落绿化
     const r = rng(41), deco = new THREE.Group(); s.add(deco);
-    for (const [x, z] of [[-14, 1.2], [14, 1.2], [14.5, 17.5]]) { const t = tree(r, r() < 0.5 ? 0 : 1); t.position.set(x, 0, z); deco.add(t); }
+    for (const [x, z] of [[-14, 1.2], [14.5, 17.5]]) { const t = tree(r, r() < 0.5 ? 0 : 1); t.position.set(x, 0, z); deco.add(t); }
     for (const [x, z] of [[-14.5, 17.2], [13.5, 9]]) { const b = bush(r); b.position.set(x, 0, z); deco.add(b); }
     this.blockers.push({ x0: -15.5, x1: -13, z0: 16, z1: 18.6 }, { x0: 13, x1: 16, z0: 16, z1: 18.8 });
   }

@@ -128,6 +128,7 @@ export class Field {
     this.cols = Math.round(W / CELL); this.rows = Math.round(D / CELL);
     this.x0 = -W / 2; this.z0 = RAMP.z0 - D; this.z1 = RAMP.z0;
     this.margin = FIELD_MARGIN;
+    this.hard = def.hard || 1;   // 作物硬度倍数（关卡越高越硬）
     const N = this.cols * this.rows;
     this.type = new Uint8Array(N); this.hp = new Float32Array(N); this.cut = new Uint8Array(N);
     this.gold = new Uint8Array(N); this.slot = new Int32Array(N); this.flowerSlot = new Int32Array(N).fill(-1);
@@ -142,7 +143,7 @@ export class Field {
       const nz = Math.sin(x * 0.19 + ph[0]) * Math.cos(z * 0.16 + ph[1]) * 0.5 + Math.sin(x * 0.06 + z * 0.08 + ph[2]) * 0.5;
       const k = Math.max(0, Math.min(def.tiers.length - 1, Math.floor(f * def.tiers.length + nz * 0.4)));
       const t = def.tiers[k];
-      this.type[idx] = t; this.hp[idx] = CROPS[t].hp; this.slot[idx] = counts[t]++;
+      this.type[idx] = t; this.hp[idx] = CROPS[t].hp * this.hard; this.slot[idx] = counts[t]++;
     }
     for (let k = 0; k < FIELD_BONUS.goldPatches; k++) {
       const x = this.x0 + 3 + r() * (W - 6), z = this.z0 + 3 + r() * (D - 8);
@@ -223,7 +224,7 @@ export class Field {
     _q.setFromAxisAngle(_up, this.yaws[idx]);
     const c = CROPS[this.type[idx]];
     if (this.cut[idx]) _s.set(0.0001, 0.0001, 0.0001);
-    else { const sxz = c.model === 'blade' ? 1.1 : c.model === 'bush' ? 1.15 : 0.55 + 0.3 * (c.h / 1.9); _s.set(sxz, this.heights[idx], sxz); }
+    else { const sxz = c.model === 'blade' ? 1.1 : c.model === 'bush' ? 1.15 : 0.55 + 0.3 * (c.h / 1.9), k = 0.35 + 0.65 * Math.min(1, this.hp[idx] / (c.hp * this.hard)); _s.set(sxz, this.heights[idx] * k, sxz); }
     _m.compose(_p, _q, _s);
     this.meshes[this.type[idx]].setMatrixAt(this.slot[idx], _m);
     const fs = this.flowerSlot[idx];
@@ -249,9 +250,13 @@ export class Field {
     let tough = 0;
     this.forCells(x, z, rad, (idx) => {
       if (this.cut[idx]) return;
-      const hp = CROPS[this.type[idx]].hp;
+      const hp = this.hp[idx];
       if (strength >= hp) this.hp[idx] = 0;
-      else { this.hp[idx] -= strength * 2.6 * dt; tough = Math.max(tough, hp / strength); }
+      else {
+        // 硬草：锯子磨一会儿才断；草被一点点锯矮，看得出在割
+        this.hp[idx] -= strength * 2.6 * dt; tough = Math.max(tough, hp / strength);
+        if (this.hp[idx] > 0) { this.writeMatrix(idx); const t = this.type[idx], sl = this.slot[idx]; this.lo[t] = Math.min(this.lo[t], sl); this.hi[t] = Math.max(this.hi[t], sl); this.dirtySet.add(t); this.dirty = true; }
+      }
       if (this.hp[idx] <= 0) this.markCut(idx, out);
     });
     for (const g of this.gems) {

@@ -3,17 +3,45 @@ import * as THREE from 'three';
 import { rng, lam, box, cyl, sphere, TEX, canvasTex, GLB, nameplate } from './assets.js';
 import { CHARACTERS } from './config.js';
 
-// 没有坐姿动画的模型（农夫）：直接掰骨头摆成坐姿
-function sitPose(wrap, { hip = -1.35, knee = 1.45, armUp = -0.75, armLow = -0.55 } = {}) {
-  let hit = 0;
-  wrap.traverse((o) => {
-    if (!o.isBone) return;
-    const n = o.name;
-    if (n.startsWith('UpperLeg')) o.rotation.x += hip; else if (n.startsWith('LowerLeg')) o.rotation.x += knee;
-    else if (n.startsWith('UpperArm')) o.rotation.x += armUp; else if (n.startsWith('LowerArm')) o.rotation.x += armLow;
-    else return; hit++;
-  });
-  if (!hit) console.warn('sitPose: 没找到 UpperLeg/LowerLeg 骨骼，人物会站着');
+// ---- 骨骼摆姿势：把骨头转到「指向某方向」，不依赖各模型骨骼的本地轴向（以前按本地轴硬掰，左右腿方向相反 → 翘二郎腿、手背到后面）
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
+function boneMap(wrap) { const m = {}; wrap.traverse((o) => { if (o.name && !m[o.name]) m[o.name] = o; }); return m; }   // 含 *_end 末端节点（它们不是 Bone）
+function aim(bone, child, dir) {
+  if (!bone || !child) return;
+  bone.updateWorldMatrix(true, true);
+  bone.getWorldPosition(_a); child.getWorldPosition(_b);
+  _q1.setFromUnitVectors(_b.sub(_a).normalize(), dir.clone().normalize());
+  bone.getWorldQuaternion(_q2); _q1.multiply(_q2);
+  bone.parent.getWorldQuaternion(_q2); bone.quaternion.copy(_q2.invert().multiply(_q1));
+  bone.updateWorldMatrix(false, true);
+}
+function pin(bone, to) {   // 把独立的脚骨（IK 骨架）挪到小腿末端，脚跟着腿走
+  if (!bone || !to) return;
+  to.updateWorldMatrix(true, false); to.getWorldPosition(_a);
+  bone.parent.updateWorldMatrix(true, false); bone.position.copy(bone.parent.worldToLocal(_a)); bone.updateWorldMatrix(false, true);
+}
+// 坐姿（Quaternius 骨架：农夫、奶奶）。three.js 加载时会去掉骨骼名里的点：UpperLeg.L → UpperLegL
+// drive=true：两手向前握方向盘（司机）；false：两手放在腿上（乘客）。两腿都是大腿平伸向前、小腿垂下、两脚并排
+function seatPose(wrap, drive) {
+  const B = boneMap(wrap), V = (x, y, z) => new THREE.Vector3(x, y, z);
+  wrap.updateMatrixWorld(true);
+  for (const s of ['L', 'R']) {
+    const up = B['UpperLeg' + s]; if (!up) { console.warn('seatPose: 没找到腿骨', Object.keys(B)); return; }
+    const sx = Math.sign(up.getWorldPosition(_a).x) || (s === 'L' ? 1 : -1);   // 这一侧在 +x 还是 -x
+    aim(up, B['LowerLeg' + s], V(sx * 0.12, -0.12, -1));
+    aim(B['LowerLeg' + s], B['LowerLeg' + s + '_end'], V(sx * 0.04, -1, -0.22));
+    pin(B['Foot' + s], B['LowerLeg' + s + '_end']);
+    const hand = B['Wrist' + s] || B['Palm' + s];
+    if (drive) { aim(B['UpperArm' + s], B['LowerArm' + s], V(sx * 0.3, -0.6, -0.75)); aim(B['LowerArm' + s], hand, V(-sx * 0.4, 0.08, -1)); }
+    else { aim(B['UpperArm' + s], B['LowerArm' + s], V(sx * 0.18, -1, -0.12)); aim(B['LowerArm' + s], hand, V(-sx * 0.2, -0.3, -1)); }
+  }
+}
+// 让人物的胯部坐在 seatY 高度（座面）上
+function seat(wrap, seatY, hip = 'Hips') {
+  const B = boneMap(wrap);
+  const h = B[hip] || B['UpperLegL'] || B['LeftUpLeg']; if (!h) return;
+  const wp = wrap.position.clone(); wrap.position.set(0, 0, 0); wrap.updateMatrixWorld(true);
+  const y = h.getWorldPosition(_a).y; wrap.position.set(wp.x, seatY + 0.1 - y, wp.z);
 }
 
 const Y = 0xf2c230, YD = 0xd39d12, DARK = 0x1e1e1e;
@@ -26,12 +54,14 @@ function makeWheel(R, w, parent, x, y, z) {
   const hub = new THREE.Mesh(wheelGeo(R * 0.45, w + 0.03), lam(0xd6d6d6, { roughness: 0.4, metalness: 0.5 })); g.add(hub);
   return g;
 }
+// 锯片：尖锐的钩形锯齿（一边陡、一边斜，齿尖往外顶），比以前的方齿锋利
 function gearGeometry(R, teeth) {
-  const sh = new THREE.Shape(), n = teeth * 2;
-  for (let k = 0; k <= n * 2; k++) {
-    const a = k / (n * 2) * Math.PI * 2, tooth = k % 4 === 0 || k % 4 === 1, rr = tooth ? R : R * 0.8;
-    k === 0 ? sh.moveTo(Math.cos(a) * rr, Math.sin(a) * rr) : sh.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+  const sh = new THREE.Shape(), step = Math.PI * 2 / teeth;
+  for (let k = 0; k < teeth; k++) {
+    const a = k * step, pts = [[a, R * 0.72], [a + step * 0.12, R * 0.74], [a + step * 0.86, R * 1.06], [a + step * 0.9, R * 0.95], [a + step, R * 0.72]];
+    for (let i = 0; i < pts.length - 1; i++) { const [b, rr] = pts[i]; (k === 0 && i === 0) ? sh.moveTo(Math.cos(b) * rr, Math.sin(b) * rr) : sh.lineTo(Math.cos(b) * rr, Math.sin(b) * rr); }
   }
+  sh.closePath();
   const hole = new THREE.Path(); hole.absarc(0, 0, R * 0.2, 0, Math.PI * 2, true); sh.holes.push(hole);
   const g = new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: true, bevelSize: 0.01, bevelThickness: 0.01, bevelSegments: 1 });
   g.rotateX(-Math.PI / 2);
@@ -42,6 +72,7 @@ export class Mower {
   constructor(scene) {
     this.g = new THREE.Group(); scene.add(this.g);
     const body = new THREE.Group(); this.g.add(body); this.body = body;
+    this.carColor = { value: new THREE.Color(0xe53935) };
     const paint = lam(Y, { roughness: 0.45, metalness: 0.15 });
     // ---- 陆地形态：拖拉机 glTF 车头 ----
     this.land = new THREE.Group(); body.add(this.land);
@@ -49,6 +80,17 @@ export class Mower {
     if (tractor) {
       const L = tractor.userData.size.z || 3.4; const s = 3.4 / L; tractor.scale.setScalar(s);
       tractor.position.set(0, 0, -0.35); this.land.add(tractor); this.tractor = tractor;
+      // 车身换色：贴图里红色的部分换成 uCar（每关一种颜色），黄轮毂、黑轮胎、灰铁件不动
+      tractor.traverse((m) => {
+        if (!m.isMesh) return;
+        m.material = m.material.clone();
+        m.material.onBeforeCompile = (sh) => {
+          sh.uniforms.uCar = this.carColor;
+          sh.fragmentShader = 'uniform vec3 uCar;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+            { vec3 c = diffuseColor.rgb; float w = smoothstep(0.06, 0.16, c.r) * (1.0 - smoothstep(0.25, 0.45, max(c.g, c.b) / max(c.r, 1e-4)));
+              diffuseColor.rgb = mix(c, uCar * clamp(c.r / 0.75, 0.0, 1.35), w); }`);
+        };
+      });
     } else {
       box(1.5, 0.35, 2.7, paint, 0, 0.55, 0.1, this.land);
       box(1.2, 0.5, 1.0, lam(0xf6f6f6), 0, 0.95, -0.85, this.land);
@@ -68,22 +110,28 @@ export class Mower {
     box(1.6, 0.1, 1.5, paint, 0, 0, 0, bed);
     box(1.6, 0.6, 0.1, paint, 0, 0.3, 0.7, bed); box(0.1, 0.6, 1.5, paint, -0.75, 0.3, 0, bed); box(0.1, 0.6, 1.5, paint, 0.75, 0.3, 0, bed); box(1.6, 0.45, 0.1, paint, 0, 0.22, -0.7, bed);
     for (const z of [-0.45, 0, 0.45]) { box(0.06, 0.62, 0.06, YD, -0.79, 0.3, z, bed, false); box(0.06, 0.62, 0.06, YD, 0.79, 0.3, z, bed, false); }
+    // 后备箱后面的拖钩：拖车挂在这里，前后排开（以前挂点在后备箱里面，拖车和后备箱叠在一起）
+    box(0.16, 0.1, 0.5, 0x333a40, 0, -0.25, 0.95, bed, false); cyl(0.08, 0.08, 0.12, 0x222222, 0, -0.2, 1.18, bed, 8);
+    this.hitchZ = 3.2 + 1.2;
     // 司机「一介草民（爷爷）」坐驾驶位（农夫模型没有坐姿动画，掰骨头坐下）
-    const drv = GLB.make('farmer1', { height: 1.55, rotY: Math.PI });
-    if (drv) { sitPose(drv); drv.position.set(0, 0.62, 0.05); body.add(drv); this.driver = drv; }
+    const drv = GLB.make('farmer1', { height: 1.6, rotY: Math.PI });
+    if (drv) { seatPose(drv, true); drv.position.set(0, 0, 0.12); seat(drv, 1.42, 'UpperLegL'); body.add(drv); this.driver = drv; }
     // 第二排：「甜甜」（小女孩，SitIdle 坐姿动画）+「岁月静好（奶奶）」（女性模型没有合适的坐姿动画，掰骨头坐下）
-    const kid = GLB.make('girl1', { height: 1.15, rotY: Math.PI });
-    if (kid) { kid.position.set(-0.42, 0.98, 1.72); kid.rotation.y += 0.12; body.add(kid); this.kid = kid; this.kidMix = GLB.mixer(kid); this.kidMix.play('SitIdle'); }
-    const granny = GLB.make('woman1', { height: 1.55, rotY: Math.PI });
-    if (granny) { sitPose(granny, { armUp: -0.35, armLow: -0.4 }); granny.position.set(0.42, 0.36, 1.72); granny.rotation.y -= 0.12; body.add(granny); this.granny = granny; }
+    // 两人在同一条长凳上并排坐：甜甜在左、奶奶在右，屁股都坐在座面上（以前奶奶比甜甜矮了一截，像一上一下）
+    const kid = GLB.make('girl1', { height: 1.2, rotY: Math.PI });
+    if (kid) { this.kidMix = GLB.mixer(kid); this.kidMix.play('SitIdle', 0); this.kidMix.update(0); kid.position.set(-0.4, 0, 1.68); seat(kid, 1.04); body.add(kid); this.kid = kid; }
+    const granny = GLB.make('woman1', { height: 1.65, rotY: Math.PI });
+    if (granny) { seatPose(granny, false); granny.position.set(0.4, 0, 1.68); seat(granny, 1.04, 'UpperLegL'); body.add(granny); this.granny = granny; }
+    this.seated = { driver: drv, passenger: kid, granny };
     // 名牌各跟各的头，高度和左右错开，避免三块牌叠在一起
     this.driverPlate = nameplate(CHARACTERS.driver.name, CHARACTERS.driver.avatar, 3.2); this.driverPlate.position.set(0, 3.1, 0.05); body.add(this.driverPlate);
-    this.kidPlate = nameplate(CHARACTERS.passenger.name, CHARACTERS.passenger.avatar, 2.4); this.kidPlate.position.set(-1.0, 2.15, 1.72); body.add(this.kidPlate);
-    this.grannyPlate = nameplate(CHARACTERS.granny.name, CHARACTERS.granny.avatar, 3.0); this.grannyPlate.position.set(1.1, 2.55, 1.72); body.add(this.grannyPlate);
+    this.kidPlate = nameplate(CHARACTERS.passenger.name, CHARACTERS.passenger.avatar, 2.4); this.kidPlate.position.set(-1.0, 2.3, 1.72); body.add(this.kidPlate);
+    this.grannyPlate = nameplate(CHARACTERS.granny.name, CHARACTERS.granny.avatar, 3.0); this.grannyPlate.position.set(1.1, 2.6, 1.72); body.add(this.grannyPlate);
+    this.plates = { driver: this.driverPlate, passenger: this.kidPlate, granny: this.grannyPlate };
     this.exhaust = new THREE.Vector3(0.45, 2.0, -0.9);
     // 锯片横梁 + 锯片（只在陆地）
     this.bladeArm = box(1.2, 0.1, 0.12, lam(0xcfa21a, { metalness: 0.3, roughness: 0.5 }), 0, 0.5, -2.05, this.land);
-    this.bladeMat = lam(0xd2d8dd, { emissive: 0x000000, metalness: 0.75, roughness: 0.3 });
+    this.bladeMat = lam(0xe4eaee, { emissive: 0x111418, metalness: 0.9, roughness: 0.18 });
     this.hubMat = lam(0xe53935, { roughness: 0.4 });
     this.blades = [];
     // 车斗草块
@@ -128,6 +176,9 @@ export class Mower {
     this.netPoint = new THREE.Vector3(0, 0, -3.5);
     this.setWater(false);
   }
+  setColor(hex) { this.carColor.value.setHex(hex); }
+  // 谁坐在车上：下车的人从座位上消失，上车再出现
+  setSeated(key, on) { const m = this.seated[key]; if (m) m.visible = on; const p = this.plates[key]; if (p) p.visible = on; }
   setWater(wet) {
     if (this._wet === wet) return; this._wet = wet;
     this.land.visible = !wet; this.boat.visible = wet;
@@ -140,7 +191,7 @@ export class Mower {
     this.bladeKey = key;
     for (const b of this.blades) { this.land.remove(b.g); b.geo.dispose(); }
     this.blades = [];
-    const geo = gearGeometry(R, 8);
+    const geo = gearGeometry(R, 18);
     for (let k = 0; k < n; k++) {
       const g = new THREE.Group();
       g.position.set((k - (n - 1) / 2) * gap, 0.38, -2.2 - (k % 2) * 0.22);
