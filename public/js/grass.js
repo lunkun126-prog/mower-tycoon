@@ -1,8 +1,8 @@
 // 草场：每种作物一个 InstancedMesh（叶片/花生丛/向日葵为程序几何，玉米麦子南瓜胡萝卜为 glTF 烘焙），
 // 顶点着色器做风 + 被割草机压倒；割完格子彻底清空 + 地面亮条纹；花随格子一起割；宝石与金草；装饰草坪
 import * as THREE from 'three';
-import { CELL, FIELD_Y, RAMP, CROPS, BLADES_PER_CELL, FIELD_MARGIN, FIELD_BONUS } from './config.js';
-import { rng, lam, TEX, GLB } from './assets.js';
+import { CELL, FIELD_Y, RAMP, CROPS, BLADES_PER_CELL, FIELD_MARGIN, FIELD_BONUS } from './config.js?v=1007';
+import { rng, lam, TEX, GLB } from './assets.js?v=1007';
 
 // ---------- 程序几何：都带 position/normal/color/bend ----------
 class GeoBuilder {

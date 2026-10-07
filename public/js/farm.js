@@ -1,8 +1,8 @@
 // 农场玩法：下车变人、草料机打捆、草棚拿草捆、喂鸡喂牛、收蛋收奶、上货架、顾客从码头来买
 import * as THREE from 'three';
-import { FARM, GOODS, BALE, CUSTOMER, FARM_Z, GATE, ISLAND, CHARACTERS, ENERGY } from './config.js';
-import { person, squareBale } from './models.js';
-import { box, sphere, cyl, lam, nameplate, GLB } from './assets.js';
+import { FARM, GOODS, BALE, CUSTOMER, FARM_Z, GATE, ISLAND, CHARACTERS, ENERGY } from './config.js?v=1007';
+import { person, squareBale } from './models.js?v=1007';
+import { box, sphere, cyl, lam, nameplate, GLB } from './assets.js?v=1007';
 
 const inRect = (r, x, z, m = 0) => x > r.x0 - m && x < r.x1 + m && z > r.z0 - m && z < r.z1 + m;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));

@@ -1,7 +1,7 @@
 // 模型：割草机（拖拉机 glTF 车身 + 锯片臂 + 草斗 + 司机）、树、灌木、草垛、稻草人、鱼、船、鸭子、睡莲、顾客
 import * as THREE from 'three';
-import { rng, lam, box, cyl, sphere, TEX, canvasTex, GLB, nameplate } from './assets.js';
-import { CHARACTERS } from './config.js';
+import { rng, lam, box, cyl, sphere, TEX, canvasTex, GLB, nameplate } from './assets.js?v=1007';
+import { CHARACTERS } from './config.js?v=1007';
 
 // ---- 骨骼摆姿势：把骨头转到「指向某方向」，不依赖各模型骨骼的本地轴向（以前按本地轴硬掰，左右腿方向相反 → 翘二郎腿、手背到后面）
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion();

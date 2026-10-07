@@ -2,8 +2,8 @@
 // 火车平时沿铁轨跟着割草机走，车斗里的草自动一块块飞进车厢，不用开回基地；
 // 装满了（或者车开出草场一会儿）就鸣笛开到市场卖掉、给钱，再开回割草机旁边接着装。
 import * as THREE from 'three';
-import { TRAIN, CROPS, FIELD_Y } from './config.js';
-import { box, cyl, lam, TEX, textPlane } from './assets.js';
+import { TRAIN, CROPS, FIELD_Y } from './config.js?v=1007';
+import { box, cyl, lam, TEX, textPlane } from './assets.js?v=1007';
 
 const GAP = 2.35;                                            // 车厢间距
 const SLOTS = 16;                                            // 每节车厢显示几块草

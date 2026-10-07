@@ -1,13 +1,13 @@
 // 割草大亨 v3 主逻辑：开车割草装车 → 出售/打捆 → 下水玩 → 农场大门下车变人 → 扛草喂鸡牛 → 收蛋奶上架 → 顾客来买；升级/星星关卡/商店/存档/粒子/音效
 import * as THREE from 'three';
-import { CROPS, UPGRADES, SHOP, FARM, GOODS, STARS, LEVEL_COUNT, UNLOCK, BOOST_MS, FIELD_Y, RAMP, ISLAND, FARM_Z, GATE, SLIP, SEA_R, WATER_Y, UNITS_PER_CELL, FIELD_BONUS, SANDBOX, TRUNK, ENERGY, FISH_INDEX, levelDef, stats, cutPower, carColor, STATION, CHARACTERS, trainStats } from './config.js';
-import { World } from './world.js';
-import { Field } from './grass.js';
-import { Mower } from './models.js';
-import { Farm } from './farm.js';
-import { Train } from './train.js';
-import { textPlane, GLB } from './assets.js';
-import * as UI from './ui.js';
+import { CROPS, UPGRADES, SHOP, FARM, GOODS, STARS, LEVEL_COUNT, UNLOCK, BOOST_MS, FIELD_Y, RAMP, ISLAND, FARM_Z, GATE, SLIP, SEA_R, WATER_Y, UNITS_PER_CELL, FIELD_BONUS, SANDBOX, TRUNK, ENERGY, FISH_INDEX, levelDef, stats, cutPower, carColor, STATION, CHARACTERS, trainStats } from './config.js?v=1007';
+import { World } from './world.js?v=1007';
+import { Field } from './grass.js?v=1007';
+import { Mower } from './models.js?v=1007';
+import { Farm } from './farm.js?v=1007';
+import { Train } from './train.js?v=1007';
+import { textPlane, GLB } from './assets.js?v=1007';
+import * as UI from './ui.js?v=1007';
 
 const SAVE_KEY = SANDBOX ? 'mower_tycoon_v3_sandbox' : 'mower_tycoon_v3';
 const $ = (id) => document.getElementById(id);

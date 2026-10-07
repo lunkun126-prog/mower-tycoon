@@ -1,6 +1,6 @@
 // 界面：HUD、升级/关卡/商店/农场/设置面板、提示
 import * as THREE from 'three';
-import { UPGRADES, SHOP, FARM, GOODS, STARS, LEVEL_COUNT, SANDBOX, CHARACTERS } from './config.js';
+import { UPGRADES, SHOP, FARM, GOODS, STARS, LEVEL_COUNT, SANDBOX, CHARACTERS } from './config.js?v=1007';
 
 const $ = (id) => document.getElementById(id);
 const ICON = {

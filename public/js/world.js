@@ -1,9 +1,9 @@
 // 场景：天空、海（锦鲤、船、鸭子、睡莲）、小岛基地、建筑、地面格子、滑水道、农场（石墙大门/草料机/草棚/鸡舍/牛舍/货架/小路码头）、草场四周风景
 import * as THREE from 'three';
-import { FIELD_Y, RAMP, ISLAND, FARM_Z, GATE, SLIP, WATER_Y, FISH, STATION, TRAIN } from './config.js';
-import { rng, lam, box, cyl, sphere, TEX, textPlane, canvasTex, GLB, infoSprite } from './assets.js';
-import { tree, bush, hayBale, squareBale, scarecrow, animal, duck, fish, rowboat, hayBarge, sailboat, lilyPad } from './models.js';
-import { makeLawn } from './grass.js';
+import { FIELD_Y, RAMP, ISLAND, FARM_Z, GATE, SLIP, WATER_Y, FISH, STATION, TRAIN } from './config.js?v=1007';
+import { rng, lam, box, cyl, sphere, TEX, textPlane, canvasTex, GLB, infoSprite } from './assets.js?v=1007';
+import { tree, bush, hayBale, squareBale, scarecrow, animal, duck, fish, rowboat, hayBarge, sailboat, lilyPad } from './models.js?v=1007';
+import { makeLawn } from './grass.js?v=1007';
 
 function padTexture(w, h, fill) {
   return canvasTex(w * 64, h * 64, (g, W, H) => {
