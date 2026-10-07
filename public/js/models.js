@@ -73,7 +73,7 @@ export class Mower {
     this.g = new THREE.Group(); scene.add(this.g);
     const body = new THREE.Group(); this.g.add(body); this.body = body;
     this.carColor = { value: new THREE.Color(0xe53935) };
-    const paint = lam(Y, { roughness: 0.45, metalness: 0.15 });
+    const paint = lam(Y, { roughness: 0.45, metalness: 0.15 }); this.paint = paint;   // 底盘/后备箱/拖车也跟着每关的车色换
     // ---- 陆地形态：拖拉机 glTF 车头 ----
     this.land = new THREE.Group(); body.add(this.land);
     const tractor = GLB.make('gm4', { height: 1.9, rotY: Math.PI });
@@ -176,7 +176,7 @@ export class Mower {
     this.netPoint = new THREE.Vector3(0, 0, -3.5);
     this.setWater(false);
   }
-  setColor(hex) { this.carColor.value.setHex(hex); }
+  setColor(hex) { this.carColor.value.setHex(hex); this.paint.color.setHex(hex); }
   // 谁坐在车上：下车的人从座位上消失，上车再出现
   setSeated(key, on) { const m = this.seated[key]; if (m) m.visible = on; const p = this.plates[key]; if (p) p.visible = on; }
   setWater(wet) {

@@ -16,9 +16,10 @@ export const FARM_Z = 19;                                     // z 大于这个�
 export const GATE = { x0: -2.6, x1: 2.6 };                    // 农场大门（石墙缺口）
 export const SLIP = { x0: -16, x1: -13, z0: 9.5, z1: 14 };    // 滑水道：从基地左边开进水里（x 越小越深）
 export const SEA_R = 70;                                      // 水里能开多远
-// 小火车站（第 11 关起出现）：基地右边接出去的站台，上面一圈环形小铁轨
-export const STATION = { x0: 16, x1: 31.5, z0: -1.2, z1: 11, gz0: 1.2, gz1: 9.2, fromLevel: 11 };
-export const TRAIN = { cap: 900, speed: 4.2, bonus: 1.25, leaveAfter: 2.5, wagons: 3 };   // 车厢总容量、车速、卖价加成、车离开装车格几秒后发车
+// 小火车（第 11 关起出现）：铁轨铺在草场边上（左边→上边→右边一圈 U 形），火车跟着割草机走，草直接飞进车厢；
+// 装满了自己开到右下角的「市场」卖掉再开回来，不用开回基地。gz0/gz1 是基地右边栏杆分段用的（旧站台已拆）
+export const STATION = { gz0: 1.2, gz1: 9.2, fromLevel: 11 };
+export const TRAIN = { cap: 900, speed: 10, follow: 7, bonus: 1.25, leaveAfter: 3, wagons: 3, maxWagons: 7, off: 1.5 };   // 车厢总容量、跑车速度、跟车速度、卖价加成、车离开草场几秒后发车、车厢节数、铁轨离草边多远
 
 // 作物：model = 'blade'（叶片）| 'bush'（花生丛）| 'sunflower' | glb 键；hp 硬度；value 每单位售价；block 车斗方块色
 export const CROPS = [
@@ -93,6 +94,14 @@ export const UPGRADES = {
       { id: 'trailer', name: '拖车容量', icon: 'trailer', max: 15, price: (L) => cost(1500, 1.6, L), show: (L) => (L ? 200 + 80 * (L - 1) : 0) },
     ],
   },
+  train: {
+    title: '升级小火车', needLevel: 11,
+    items: [
+      { id: 'tcap',   name: '车厢容量', icon: 'tcap',   max: 20, price: (L) => cost(1200, 1.6, L), show: (L) => trainStats({ tcap: L }).cap },
+      { id: 'tspeed', name: '火车速度', icon: 'tspeed', max: 10, price: (L) => cost(900, 1.6, L),  show: (L) => `${trainStats({ tspeed: L }).speed.toFixed(0)}m/s` },
+      { id: 'tbonus', name: '卖价加成', icon: 'tbonus', max: 10, price: (L) => cost(1500, 1.6, L), show: (L) => `+${Math.round((trainStats({ tbonus: L }).bonus - 1) * 100)}%` },
+    ],
+  },
   farm: {
     title: '升级农场', needLevel: 5,
     items: [
@@ -150,6 +159,11 @@ export const ENERGY = { max: 100, drainWalk: 0.5, drainCarry: 0.7, lowSpeed: 0.5
 export const BALE = { max: 60 };                          // 草料机旁最多堆多少捆
 export const CUSTOMER = { every: 9, walk: 2.2, max: 4 };  // 顾客每隔几秒来一个、步速、同时几个
 
+// 小火车属性（容量每升 1 级 +300，每 5 级多挂一节车厢）
+export function trainStats(u) {
+  const c = u.tcap || 0;
+  return { cap: TRAIN.cap + 300 * c, wagons: Math.min(TRAIN.maxWagons, TRAIN.wagons + Math.floor(c / 5)), speed: TRAIN.speed * (1 + 0.12 * (u.tspeed || 0)), bonus: TRAIN.bonus + 0.05 * (u.tbonus || 0) };
+}
 // 车辆/人物属性
 export function stats(save) {
   const u = save.up, s = save.shop;

@@ -1,6 +1,6 @@
 // 割草大亨 v3 主逻辑：开车割草装车 → 出售/打捆 → 下水玩 → 农场大门下车变人 → 扛草喂鸡牛 → 收蛋奶上架 → 顾客来买；升级/星星关卡/商店/存档/粒子/音效
 import * as THREE from 'three';
-import { CROPS, UPGRADES, SHOP, FARM, GOODS, STARS, LEVEL_COUNT, UNLOCK, BOOST_MS, FIELD_Y, RAMP, ISLAND, FARM_Z, GATE, SLIP, SEA_R, WATER_Y, UNITS_PER_CELL, FIELD_BONUS, SANDBOX, TRUNK, ENERGY, FISH_INDEX, levelDef, stats, cutPower, carColor, STATION, CHARACTERS } from './config.js';
+import { CROPS, UPGRADES, SHOP, FARM, GOODS, STARS, LEVEL_COUNT, UNLOCK, BOOST_MS, FIELD_Y, RAMP, ISLAND, FARM_Z, GATE, SLIP, SEA_R, WATER_Y, UNITS_PER_CELL, FIELD_BONUS, SANDBOX, TRUNK, ENERGY, FISH_INDEX, levelDef, stats, cutPower, carColor, STATION, CHARACTERS, trainStats } from './config.js';
 import { World } from './world.js';
 import { Field } from './grass.js';
 import { Mower } from './models.js';
@@ -16,7 +16,7 @@ const $ = (id) => document.getElementById(id);
 function defaultSave() {
   return {
     v: 3, coins: 0, gems: 0, level: 1, maxLevel: 1, stars: {},
-    up: { blades: 0, teeth: 0, spin: 0, width: 0, cap: 0, wheels: 0, turn: 0, magnet: 0, trailer: 0, carry: 0, baler: 0, animals: 0, shelf: 0, guests: 0 },
+    up: { blades: 0, teeth: 0, spin: 0, width: 0, cap: 0, wheels: 0, turn: 0, magnet: 0, trailer: 0, carry: 0, baler: 0, animals: 0, shelf: 0, guests: 0, tcap: 0, tspeed: 0, tbonus: 0 },
     shop: {}, boostUntil: 0,
     farm: { coop: { built: false, feed: 0, goods: 0, t: 0 }, barn: { built: false, feed: 0, goods: 0, t: 0 }, bales: 0, balerBuf: 0, shelf: { egg: 0, milk: 0, fish: 0 }, carry: { bales: 0, egg: 0, milk: 0, fish: 0, rawFish: 0 }, energy: ENERGY.max },
     trunk: { fish: [], junk: 0 },
@@ -109,7 +109,6 @@ function groundY(x, z) {
   if (z < RAMP.z0) return inField(x, z, field.margin) ? FIELD_Y : WATER_Y - 0.15;
   if (z <= RAMP.z1 && x > RAMP.x0 - 0.5 && x < RAMP.x1 + 0.5) return FIELD_Y * (RAMP.z1 - z) / (RAMP.z1 - RAMP.z0);
   if (inRect(ISLAND, x, z)) { if (inSlip(x, z)) return -0.75 * clamp((SLIP.x1 - x) / 3.6, 0, 1); return 0; }
-  if (train && train.inArea(x, z)) return 0;
   if (inSlip(x, z)) return -0.75 * clamp((SLIP.x1 - x) / 3.6, 0, 1);
   return WATER_Y - 0.15;
 }
@@ -121,11 +120,9 @@ function walkable(x, z) {
     return waterOk(x, z);
   }
   if (z <= RAMP.z1 + m && x > RAMP.x0 - 0.5 && x < RAMP.x1 + 0.5) return x > RAMP.x0 + 0.7 && x < RAMP.x1 - 0.7 || (z > RAMP.z1 + 0.6);
-  if (train && train.inArea(x, z) && x > ISLAND.x1) return train.walkable(x, z);
   if (inRect(ISLAND, x, z, 0.2)) {
     if (inSlip(x, z)) return true;
-    const gap = train && train.active && z > STATION.gz0 + 0.6 && z < STATION.gz1 - 0.6;   // 右边栏杆的进站口
-    if (!(x > ISLAND.x0 + m && (x < ISLAND.x1 - m || gap) && z > 0.6)) return false;
+    if (!(x > ISLAND.x0 + m && x < ISLAND.x1 - m && z > 0.6)) return false;
     if (z > FARM_Z - 0.8) return false;                     // 石墙：车不进农场（大门格会让你下车）
     for (const b of world.blockers) if (inRect(b, x, z, 0.7)) return false;
     return true;
@@ -135,7 +132,6 @@ function walkable(x, z) {
 function waterOk(x, z) {
   if (inSlip(x, z)) return true;
   if (inRect(ISLAND, x, z, 0.8)) return false;
-  if (train && train.inArea(x, z, 0.8)) return false;
   if (inField(x, z, field.margin + 0.8)) return false;
   if (z > RAMP.z0 - 0.8 && z < RAMP.z1 + 0.8 && x > RAMP.x0 - 1 && x < RAMP.x1 + 1) return false;
   if (Math.abs(x) < 2.2 && z > ISLAND.z1 - 1 && z < ISLAND.z1 + 9.5) return false;   // 码头
@@ -184,14 +180,14 @@ function loadLevel(n, restore) {
   if (field) field.dispose();
   save.level = n;
   field = new Field(scene, levelDef(n), uniforms);
-  world.decorateField(field);
+  world.decorateField(field, n >= STATION.fromLevel);   // 有小火车的关：草场边上的树让给铁轨
   if (restore && save.fieldCut && save.fieldCut.level === n) field.load(save.fieldCut.data);
   run.stars = STARS.map((s) => field.progress >= s.at);
   run.full100 = field.progress >= 0.999;
   pickups.length = 0; pickDirty = true;
   UI.setLevel(n, field.def.tiers.map((t) => CROPS[t].name).join(' · '));
   mower.setColor(carColor(n));   // 每关换一种车色
-  train && train.setActive(n >= STATION.fromLevel);
+  train && train.setField(field, n >= STATION.fromLevel);
   if (!restore && n > 10) UI.toast('这一关的草又硬又密：锯子要多磨几下，开慢点，来回多割几遍');
   saveDirty = true;
 }
@@ -322,6 +318,7 @@ const Sfx = {
 const car = { x: 0, z: 8, yaw: 0, speed: 0, pad: null, fullWarned: false, wet: false };
 let trunkDirty = true, lastFullToast = -9;
 const trunkTotal = () => save.trunk.fish.length + save.trunk.junk;
+let trainFly = 0;
 let tPrev = performance.now(), elapsed = 0, sellAcc = 0, sellShow = 0, sellTimer = 0, flyAcc = 0, dropAcc = 0, smokeAcc = 0, splashAcc = 0, baleAcc = 0, baleShow = 0;
 const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
 const stackTopWorld = () => mower.body.localToWorld(tmpV2.set(0, mower.stackTop || 1.2, mower.bed.position.z)).clone();
@@ -338,7 +335,7 @@ function starCheck() {
     if (rw.coins) save.coins += rw.coins * mult;
     if (rw.gems) save.gems += rw.gems * mult;
     const reward = rw.coins ? `金币 +${rw.coins * mult}` : `钻石 +${rw.gems * mult}`;
-    if (k === 0 && n < LEVEL_COUNT) { save.maxLevel = Math.max(save.maxLevel, n + 1); UI.popup('胜利！', `下一关已解锁<br>${reward}`, 3); }
+    if (k === 0 && n < LEVEL_COUNT) { save.maxLevel = Math.max(save.maxLevel, n + 1); mower.setColor(carColor(n + 1)); UI.popup('胜利！', `下一关已解锁<br>车换新颜色啦！<br>${reward}`, 3); }   // 过一关当场换车色
     else UI.popup(`${'★'.repeat(k + 1)}`, reward, k + 1);
     Sfx.fanfare(); saveDirty = true;
   });
@@ -356,8 +353,6 @@ function onEnterPad(name) {
   else if (name === 'sell' && cargoTotal() < 0.5) UI.toast('车上没有草，先去草场割草');
   else if (name === 'baler') { if (lv < UNLOCK.farm) UI.openLocked('草料机', `${UNLOCK.farm}级后解锁`); else if (cargoTotal() < 0.5) UI.toast('车上没有草：割草回来再打捆'); else if (farm.balerFull()) UI.toast('草棚堆满了，先去喂鸡喂牛'); }
   else if (name === 'gate') { if (lv < UNLOCK.farm) UI.openLocked('农场', `${UNLOCK.farm}级后解锁`); else UI.openWhoDown(ctx); }
-  else if (name === 'train' && train.state !== 'wait') UI.toast('小火车卖草去了，等它开回来再装');
-  else if (name === 'train' && cargoTotal() < 0.5) UI.toast('车上没有草：割满了开过来，草会装进小火车');
   else if (name === 'trash') {
     if (save.trunk.junk > 0) { const n = save.trunk.junk, pay = n * TRUNK.junkRecycle; save.trunk.junk = 0; save.coins += pay; trunkDirty = true; saveDirty = true; UI.toast(`扔了 ${n} 件垃圾${pay ? `，回收 +${pay} 金币` : ''}`); Sfx.blip(300, 0.15, 'square', 0.1); }
     else UI.toast('后备箱里没有垃圾');
@@ -507,14 +502,17 @@ function stepDrive(dt, inp) {
     if (sellAcc >= 0.5) { save.coins += 1; sellShow += 1; } sellAcc = 0;
     UI.floatText(`+${sellShow}`, world.pads.sell, camera); Sfx.fanfare(); sellShow = 0; car.fullWarned = false;
   }
-  // 装火车格：草一块块飞进车厢，车开走后小火车出发去市场卖（比「出售」多卖 25%）
-  if (pad === 'train' && total > 0 && train.room > 0) {
-    const taken = takeTop(Math.min(Math.max(total / 1.0, 90) * dt, total, train.room));
+  // 小火车（第 11 关起）：在草场里割草时，车斗里的草自动飞进旁边跟着走的小火车（比「出售」多卖 25%），不用开回基地
+  if (train.room > 0 && total > 0 && inField(car.x, car.z)) {
+    const taken = takeTop(Math.min(Math.max(total, 60) * 2 * dt, total, train.room));
     let u = 0, v = 0; for (const s of taken) { u += s.u; v += s.u * CROPS[s.t].value * S.sellMult; }
     train.load(u, v, taken[0] ? taken[0].t : 0);
-    sellTimer += dt;
-    if (sellTimer > 0.06) { sellTimer = 0; fly(stackTopWorld(), train.slotWorld(new THREE.Vector3()), taken[0] ? taken[0].t : 0, 0.45, 1.8); Sfx.blip(500 + Math.random() * 200, 0.04); }
-    if (train.room <= 0) UI.toast('小火车装满了，出发去市场！');
+    trainFly += dt;
+    if (trainFly > 0.08) {
+      trainFly = 0; const from = stackTopWorld(), to = train.slotWorld(new THREE.Vector3()), dist = from.distanceTo(to);
+      fly(from, to, taken[0] ? taken[0].t : 0, 0.4 + dist / 30, 1.5 + dist * 0.12); Sfx.blip(500 + Math.random() * 200, 0.03);
+    }
+    if (train.room <= 0) UI.toast('小火车装满了，开去市场卖草！');
     saveDirty = true;
   }
   // 打捆格：卸草进草料机
@@ -532,9 +530,9 @@ function stepDrive(dt, inp) {
 
   // 满载提示 + 箭头
   const full = cargoTotal() >= S.cap - UNITS_PER_CELL * 0.5;
-  if (full && !car.fullWarned) { car.fullWarned = true; UI.toast('装满了！回基地「出售」换钱，或「打捆」喂动物'); Sfx.blip(330, 0.25, 'triangle'); }
+  if (full && !car.fullWarned) { car.fullWarned = true; UI.toast(train.active && train.state !== 'wait' ? '装满了！小火车卖草去了，马上开回来接着装' : '装满了！回基地「出售」换钱，或「打捆」喂动物'); Sfx.blip(330, 0.25, 'triangle'); }
   if (!full) car.fullWarned = false;
-  arrows.visible = full && pad !== 'sell' && pad !== 'baler' && pad !== 'train';
+  arrows.visible = full && pad !== 'sell' && pad !== 'baler' && !(train.active && inField(car.x, car.z));
   if (arrows.visible) {
     let tx, tz;
     if (car.z < RAMP.z0 + 0.3) { tx = 0; tz = RAMP.z1 + 1.5; } else { tx = world.pads.sell.cx; tz = world.pads.sell.cz; }
@@ -617,7 +615,8 @@ function step(dt) {
   mower.trailer.visible = save.up.trailer > 0 && mode === 'drive';
   const inp = UI.modalOpen() ? null : readInput();
   if (mode === 'drive') stepDrive(dt, inp); else stepWalk(dt, inp);
-  train.update(dt, mode === 'drive' && car.pad === 'train');
+  train.setStats(trainStats(save.up));
+  train.update(dt, { x: car.x, z: car.z, inField: mode === 'drive' && inField(car.x, car.z) });
   farm.tick(dt);
   if (farm.dirty) { farm.dirty = false; farm.sync(); saveDirty = true; }
 

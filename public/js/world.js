@@ -1,6 +1,6 @@
 // 场景：天空、海（锦鲤、船、鸭子、睡莲）、小岛基地、建筑、地面格子、滑水道、农场（石墙大门/草料机/草棚/鸡舍/牛舍/货架/小路码头）、草场四周风景
 import * as THREE from 'three';
-import { FIELD_Y, RAMP, ISLAND, FARM_Z, GATE, SLIP, WATER_Y, FISH, STATION } from './config.js';
+import { FIELD_Y, RAMP, ISLAND, FARM_Z, GATE, SLIP, WATER_Y, FISH, STATION, TRAIN } from './config.js';
 import { rng, lam, box, cyl, sphere, TEX, textPlane, canvasTex, GLB, infoSprite } from './assets.js';
 import { tree, bush, hayBale, squareBale, scarecrow, animal, duck, fish, rowboat, hayBarge, sailboat, lilyPad } from './models.js';
 import { makeLawn } from './grass.js';
@@ -445,18 +445,23 @@ export class World {
   }
 
   // 草场四周风景（每关重建）：只在风景带里，草区内不放任何东西
-  decorateField(field) {
+  // rail：这一关有小火车，草场边上（左、上、右）铺铁轨，那一圈的树、草堆、稻草人和长草都让开
+  decorateField(field, rail = false) {
     const g = new THREE.Group(), r = rng(field.def.seed + 5), m = field.margin;
     const xL = field.x0 - m * 0.55, xR = -field.x0 + m * 0.55, zTop = field.z0 - m * 0.55;
+    if (!rail) {
     for (let x = xL + 1; x < xR; x += 3.2 + r() * 2) { const t = tree(r, r() < 0.6 ? 0 : 1); t.position.set(x + (r() - 0.5), FIELD_Y, zTop + (r() - 0.5) * 0.8); g.add(t); }
     for (let z = field.z0 + 1; z < field.z1 - 2; z += 3 + r() * 2.5) {
       for (const x of [xL, xR]) { const t = r() < 0.7 ? tree(r, r() < 0.5 ? 0 : 1) : bush(r); t.position.set(x + (r() - 0.5) * 0.6, FIELD_Y, z); g.add(t); }
     }
     for (let i = 0; i < 4; i++) { const hb = hayBale(r); hb.position.set(xL + 0.2, FIELD_Y, field.z1 - 1.5 - i * 1.3); hb.scale.setScalar(0.8); g.add(hb); }
     const sc = scarecrow(); sc.position.set(xR - 0.2, FIELD_Y, field.z1 - 2); g.add(sc);
+    }
     // 风景带草坪
     const W = field.def.w, D = field.def.d;
-    makeLawn(g, field.x0 - m, field.z0 - m, W + 2 * m, D + m, FIELD_Y, 2.0, this.uniforms, field.def.seed, [{ x0: field.x0, x1: -field.x0, z0: field.z0, z1: field.z1 }]);
+    const holes = [{ x0: field.x0, x1: -field.x0, z0: field.z0, z1: field.z1 }];
+    if (rail) { const o = TRAIN.off, h = 1.0; holes.push({ x0: field.x0 - o - h, x1: field.x0 - o + h, z0: field.z0 - m, z1: field.z1 }, { x0: -field.x0 + o - h, x1: -field.x0 + o + h, z0: field.z0 - m, z1: field.z1 }, { x0: field.x0 - m, x1: -field.x0 + m, z0: field.z0 - o - h, z1: field.z0 - o + h }); }
+    makeLawn(g, field.x0 - m, field.z0 - m, W + 2 * m, D + m, FIELD_Y, 2.0, this.uniforms, field.def.seed, holes);
     field.group.add(g);
   }
 

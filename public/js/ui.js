@@ -19,12 +19,15 @@ const ICON = {
   shelf: '<svg viewBox="0 0 48 48"><path d="M8 14h32M8 26h32M8 38h32" stroke="#fff" stroke-width="4"/><rect x="6" y="6" width="4" height="36" fill="#fff"/><rect x="38" y="6" width="4" height="36" fill="#fff"/><circle cx="16" cy="10" r="3" fill="#ffe9b0"/><rect x="26" y="18" width="5" height="8" fill="#f8f8f8"/></svg>',
   guests: '<svg viewBox="0 0 48 48"><circle cx="16" cy="14" r="6" fill="#fff"/><circle cx="32" cy="14" r="6" fill="#fff"/><path d="M6 40v-8a10 10 0 0 1 20 0v8zM22 40v-8a10 10 0 0 1 20 0v8z" fill="#fff"/></svg>',
   cart: '<svg viewBox="0 0 48 48"><path d="M5 9h7l6 22h19l5-15H15" fill="none" stroke="#fff" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round"/><circle cx="20" cy="39" r="3.8" fill="#fff"/><circle cx="35" cy="39" r="3.8" fill="#fff"/></svg>',
+  tcap: '<svg viewBox="0 0 48 48"><rect x="4" y="16" width="18" height="16" rx="2" fill="#fff"/><rect x="26" y="16" width="18" height="16" rx="2" fill="#fff"/><path d="M7 16l3-6 3 5 3-6 3 7M29 16l3-6 3 5 3-6 3 7" fill="#8fe35a"/><circle cx="10" cy="37" r="4" fill="#fff"/><circle cx="17" cy="37" r="4" fill="#fff"/><circle cx="31" cy="37" r="4" fill="#fff"/><circle cx="38" cy="37" r="4" fill="#fff"/></svg>',
+  tspeed: '<svg viewBox="0 0 48 48"><rect x="16" y="14" width="26" height="18" rx="3" fill="#fff"/><rect x="34" y="6" width="5" height="9" fill="#fff"/><circle cx="22" cy="37" r="4.5" fill="#fff"/><circle cx="36" cy="37" r="4.5" fill="#fff"/><path d="M4 16h9M2 23h11M5 30h8" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/></svg>',
+  tbonus: '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17" fill="#f2c230" stroke="#fff" stroke-width="3"/><text x="24" y="31" text-anchor="middle" font-size="20" font-weight="900" fill="#fff">$</text><path d="M36 6v10M31 11h10" stroke="#fff" stroke-width="4" stroke-linecap="round"/></svg>',
   lock: '<svg viewBox="0 0 48 48"><rect x="10" y="21" width="28" height="21" rx="4" fill="#fff"/><path d="M16 21v-6a8 8 0 0 1 16 0v6" stroke="#fff" stroke-width="5" fill="none"/></svg>',
   star: '<svg viewBox="0 0 24 24"><path d="M12 2l3 6.6 7 .8-5.2 4.9 1.4 7.1L12 18l-6.2 3.4 1.4-7.1L2 9.4l7-.8z"/></svg>',
   coop: '🐔', barn: '🐄',
   wide: '🪚', sell: '💰', truck: '🚚', double: '🎁', boost: '⚡',
 };
-const TAB_NAME = { saw: '锯片', truck: '卡车', trailer: '拖车', farm: '农场' };
+const TAB_NAME = { saw: '锯片', truck: '卡车', trailer: '拖车', train: '火车', farm: '农场' };
 
 let ctx = null, onClose = null;
 export function modalOpen() { return !$('modal').hidden; }
